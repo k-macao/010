@@ -43,11 +43,15 @@ jobs:
         id: reference
         timeout-minutes: 8
         run: python scripts/refresh_market_reference.py
+      - name: Backfill official historical FX
+        id: historical_fx
+        timeout-minutes: 5
+        run: python scripts/refresh_historical_fx.py
       - name: Check production reference data
         id: preflight
         run: python scripts/production_preflight.py
       - name: Push data-quality failure notification
-        if: ${{ failure() && (steps.reference.outcome == 'failure' || steps.preflight.outcome == 'failure') }}
+        if: ${{ failure() && (steps.reference.outcome == 'failure' || steps.historical_fx.outcome == 'failure' || steps.preflight.outcome == 'failure') }}
         run: |
           python - <<'PY'
           import os

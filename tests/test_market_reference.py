@@ -176,6 +176,28 @@ def test_scheduled_collector_writes_without_retroactive_rows(tmp_path, monkeypat
     db.dispose()
 
 
+def test_hkma_historical_fx_parser_uses_published_cny_per_unit(monkeypatch):
+    import json
+    from datetime import date
+    from io import BytesIO
+
+    from scripts import refresh_historical_fx
+
+    def fake_urlopen(url, timeout):
+        assert "choose=end_of_day" in url and "from=2025-12-30" in url
+        return BytesIO(json.dumps({"result": {"records": [
+            {"end_of_day": "2025-12-30", "cny": 1.12},
+            {"end_of_day": "2025-12-31", "cny": 1.13},
+        ]}}).encode())
+
+    monkeypatch.setattr(refresh_historical_fx, "urlopen", fake_urlopen)
+    rows = refresh_historical_fx.fetch_hkma_cny_rows(date(2025, 12, 30), date(2025, 12, 31))
+    assert len(rows) == 2
+    assert rows[0]["base"] == "HKD" and rows[0]["quote"] == "CNY"
+    assert rows[0]["rate"] == 1.12
+    assert rows[0]["source"] == "hkma_eeri_daily"
+
+
 def test_collector_never_uses_sqlite_from_environment(monkeypatch, capsys):
     from scripts import refresh_market_reference
 
