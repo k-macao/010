@@ -8,7 +8,14 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Connection, make_url
-from sqlalchemy.exc import DBAPIError, NoSuchModuleError
+from sqlalchemy.exc import (
+    DBAPIError,
+    IntegrityError,
+    NoSuchModuleError,
+    OperationalError,
+    ProgrammingError,
+    SQLAlchemyError,
+)
 
 from qp.storage.schema import fx_rates, market_caps
 
@@ -17,10 +24,29 @@ class PreflightError(Exception):
     pass
 
 
-def diagnose_database_error(exc: Exception) -> str:
+def safe_error_category(exc: Exception) -> str:
+    """Allowlisted type categories only: exception names/messages may be sensitive."""
+    for cls, label in (
+        (NoSuchModuleError, "driver"), (OperationalError, "db-operational"),
+        (ProgrammingError, "db-programming"), (IntegrityError, "db-integrity"),
+        (DBAPIError, "db-api"), (SQLAlchemyError, "sqlalchemy"),
+        (ModuleNotFoundError, "module"), (ImportError, "import"),
+        (TimeoutError, "timeout"), (ConnectionError, "connection"),
+        (ValueError, "value"), (TypeError, "type"),
+    ):
+        if isinstance(exc, cls):
+            return label
+    return "other"
+
+
+def diagnose_database_error(exc: Exception, stage: str = "") -> str:
     """Classify failures using fixed messages only; never return exception text or SQL."""
     if isinstance(exc, NoSuchModuleError):
         return "PostgreSQL 驱动不可用，请检查连接地址的驱动名称及依赖"
+    if stage == "url-parse" and isinstance(exc, (ValueError, TypeError, SQLAlchemyError)):
+        return "数据库连接地址格式无效；请检查端口及密码中特殊字符的 URL 编码"
+    if isinstance(exc, (ModuleNotFoundError, ImportError)):
+        return "数据库驱动导入失败，请检查依赖"
     if isinstance(exc, (TimeoutError, ConnectionError)):
         return "数据库连接超时或被拒绝，请检查网络、端口及防火墙"
     if not isinstance(exc, DBAPIError):
@@ -42,9 +68,13 @@ def diagnose_database_error(exc: Exception) -> str:
     # libpq connection errors often have no SQLSTATE. Scan only the wrapped driver
     # error and emit predefined text, not the error itself (which can contain secrets).
     message = str(original).lower()
+    if any(s in message for s in ("tenant or user not found", "tenant not found")):
+        return "连接池未找到项目或用户，请从 Supabase 控制台重新复制 Session pooler 地址"
     if any(s in message for s in ("password authentication failed", "authentication failed",
                                    "no pg_hba.conf entry", "role does not exist")):
         return "数据库身份验证或访问规则失败，请核对用户名、密码及访问规则"
+    if any(s in message for s in ("max clients reached", "too many clients", "too many connections")):
+        return "数据库或连接池连接数已满，请检查连接数和限额"
     if "database" in message and "does not exist" in message:
         return "数据库不存在，请核对连接地址中的数据库名"
     if any(s in message for s in ("could not translate host name", "name or service not known",
@@ -86,14 +116,18 @@ def check_reference_data(conn: Connection, symbols: list[str], day: date) -> Non
 def main() -> int:
     url = os.environ.get("QP_DATABASE_URL", "")
     symbols = [s.strip().zfill(5) for s in os.environ.get("QP_NOTIFY_SYMBOLS", "00700,09988").split(",") if s.strip()]
+    stage = "url-parse"
     try:
         if not url or make_url(url).get_backend_name() != "postgresql":
             raise PreflightError("须配置 QP_DATABASE_URL PostgreSQL 密钥")
         if not symbols or any(not (s.isascii() and s.isdigit() and len(s) == 5) for s in symbols):
             raise PreflightError("QP_NOTIFY_SYMBOLS 必须是逗号分隔的港股代码")
+        stage = "engine-init"
         engine = create_engine(url, connect_args={"connect_timeout": 10})
         try:
+            stage = "connection"
             with engine.connect() as conn:
+                stage = "reference-query"
                 check_reference_data(conn, symbols, datetime.now(ZoneInfo("Asia/Shanghai")).date())
         finally:
             engine.dispose()
@@ -101,8 +135,9 @@ def main() -> int:
         print(f"生产预检失败：{exc}", file=sys.stderr)
         return 1
     except Exception as exc:
-        # Only a fixed diagnostic is printed; URLs, SQL and driver text may contain secrets.
-        print(f"生产预检失败：{diagnose_database_error(exc)}", file=sys.stderr)
+        # Only fixed diagnostics and allowlisted metadata; URLs, SQL and driver text may contain secrets.
+        print(f"生产预检失败：{diagnose_database_error(exc, stage)}"
+              f"（阶段：{stage}；类别：{safe_error_category(exc)}）", file=sys.stderr)
         return 1
     print("生产参考数据预检通过；仍需核验数据真实性与公告日。")
     return 0

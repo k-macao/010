@@ -119,3 +119,76 @@ def test_preflight_main_logs_only_safe_diagnostic(monkeypatch, capsys):
     error = capsys.readouterr().err
     assert "主机名无法解析" in error
     assert "secret" not in error and "example.invalid" not in error
+
+
+@pytest.mark.parametrize(("driver_message", "expected"), [
+    ("FATAL: Tenant or user not found", "连接池未找到项目或用户"),
+    ("FATAL: Max clients reached", "连接数已满"),
+])
+def test_pooler_errors_are_sanitized(driver_message, expected):
+    from sqlalchemy.exc import DBAPIError
+
+    from scripts.production_preflight import diagnose_database_error
+
+    exc = DBAPIError("SQL", {}, Exception(driver_message + " secret-token"))
+    result = diagnose_database_error(exc)
+    assert expected in result
+    assert "secret-token" not in result
+
+
+def test_malformed_url_port_reports_parse_stage_without_sensitive_details(monkeypatch, capsys):
+    monkeypatch.setenv("QP_DATABASE_URL", "postgresql://user:secret@example.invalid:secret/qpdata")
+    assert main() == 1
+    error = capsys.readouterr().err
+    assert "连接地址格式无效" in error
+    assert "阶段：url-parse" in error and "类别：value" in error
+    assert "secret" not in error and "example.invalid" not in error
+
+
+def test_unknown_connect_failure_has_fixed_stage_and_category(monkeypatch, capsys):
+    from sqlalchemy.exc import OperationalError
+
+    monkeypatch.setenv("QP_DATABASE_URL", "postgresql://user:secret@example.invalid/qpdata")
+
+    class Engine:
+        def connect(self):
+            raise OperationalError("secret SQL", {}, Exception("secret-token"))
+
+        def dispose(self):
+            pass
+
+    monkeypatch.setattr("scripts.production_preflight.create_engine", lambda *args, **kwargs: Engine())
+    assert main() == 1
+    error = capsys.readouterr().err
+    assert "阶段：connection" in error and "类别：db-operational" in error
+    assert "secret" not in error and "example.invalid" not in error
+
+
+def test_unknown_query_failure_has_fixed_stage_and_category(monkeypatch, capsys):
+    from sqlalchemy.exc import ProgrammingError
+
+    monkeypatch.setenv("QP_DATABASE_URL", "postgresql://user:secret@example.invalid/qpdata")
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Engine:
+        def connect(self):
+            return Conn()
+
+        def dispose(self):
+            pass
+
+    def fail(*args, **kwargs):
+        raise ProgrammingError("secret SQL", {}, Exception("secret-token"))
+
+    monkeypatch.setattr("scripts.production_preflight.create_engine", lambda *args, **kwargs: Engine())
+    monkeypatch.setattr("scripts.production_preflight.check_reference_data", fail)
+    assert main() == 1
+    error = capsys.readouterr().err
+    assert "阶段：reference-query" in error and "类别：db-programming" in error
+    assert "secret" not in error and "example.invalid" not in error
