@@ -102,18 +102,38 @@ def capture_reference_data(
             security: SecurityInfo = master.get(symbol)
             ticker = yf.Ticker(security.ticker)
             # Currency is the quote/market currency, not financialCurrency.
+            # Yahoo's slower `info` endpoint occasionally omits marketCap or
+            # regularMarketTime. Fall back to yfinance fast_info for market cap
+            # and a recent daily bar for the quote date; never invent a value.
             info = ticker.info
             value = _positive(info.get("marketCap"))
             currency = str(info.get("currency") or "").strip().upper()
             market_time = info.get("regularMarketTime")
+            timestamp = None
             if isinstance(market_time, datetime):
                 timestamp = market_time
             elif isinstance(market_time, (int, float)) and not isinstance(market_time, bool):
                 timestamp = datetime.fromtimestamp(market_time, timezone.utc)
-            else:
+
+            if value is None or currency not in {"HKD", "CNY", "USD"} or timestamp is None:
+                fast = ticker.fast_info
+                value = value or _positive(fast.get("market_cap"))
+                currency = currency if currency in {"HKD", "CNY", "USD"} else str(
+                    fast.get("currency") or ""
+                ).strip().upper()
+                history = ticker.history(period="10d", auto_adjust=False)
+                quote_days = [
+                    index.date() if hasattr(index, "date") else date.fromisoformat(str(index)[:10])
+                    for index in history.index
+                ]
+                valid_days = [day for day in quote_days
+                              if day <= today and (today - day).days <= max_quote_age_days]
+                if valid_days:
+                    timestamp = datetime.combine(max(valid_days), datetime.min.time(),
+                                                 tzinfo=ZoneInfo("Asia/Shanghai"))
+
+            if timestamp is None or timestamp.tzinfo is None or timestamp.utcoffset() is None:
                 raise ValueError("missing market timestamp")
-            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-                raise ValueError("market timestamp has no timezone")
             age = observed_at - timestamp
             if (value is None or currency not in {"HKD", "CNY", "USD"}
                     or age < timedelta(0) or age > timedelta(days=max_quote_age_days)):

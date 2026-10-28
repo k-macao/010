@@ -53,6 +53,28 @@ def test_real_source_capture_uses_first_seen_next_day_and_market_currency():
     assert not result.warnings
 
 
+def test_market_cap_falls_back_to_fast_info_when_yahoo_info_is_incomplete():
+    class IncompleteTicker(FakeTicker):
+        def __init__(self, name):
+            super().__init__(name)
+            self.info = {"currency": "HKD"}
+            self.fast_info = {"market_cap": 1200, "currency": "HKD"}
+
+        def history(self, period, auto_adjust):
+            assert period == "10d" and auto_adjust is False
+            return pd.DataFrame({"Close": [300]}, index=pd.to_datetime(["2026-10-28"]))
+
+    class Client:
+        def Ticker(self, name):
+            if name in {"HKD=X", "CNYHKD=X"}:
+                return FakeTicker(name)
+            return IncompleteTicker(name)
+
+    result = capture_reference_data(["00700"], SecurityMaster(), NOW, FakeAk(), Client())
+    assert result.market_rows[0]["market_cap"] == 1200
+    assert result.market_rows[0]["currency"] == "HKD"
+
+
 def test_failures_are_isolated_and_do_not_log_vendor_details():
     class BadAk:
         def currency_boc_sina(self, **kwargs):
