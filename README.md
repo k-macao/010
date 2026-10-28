@@ -8,7 +8,7 @@
 
 ## 微信早午晚推送
 
-支持 PushPlus 推送流水线摘要到微信。可以使用 [GitHub Actions](docs/GITHUB_PUSHPLUS.md) 或 [服务器 cron](docs/PUSHPLUS.md) 在北京时间 08:00、12:00、18:00 推送。两种方式都需要完成配置才能启用；默认汇率、市值、公告日历是合成示例，GitHub 工作流也尚未接入数据库公告日历，**核验真实数据前不能用于投资**。
+支持 PushPlus 推送流水线摘要到微信。可以使用 [GitHub Actions](docs/GITHUB_PUSHPLUS.md) 或 [服务器 cron](docs/PUSHPLUS.md) 在北京时间 08:00、12:00、18:00 推送。GitHub 工作流尝试用 AkShare/yfinance 采集免费行情；日期级快照保守地从次日开始可用，不会回填历史。首次运行和缺历史汇率时仍可能失败；行情可能延迟或错误，公告日历也尚未接入，**核验真实数据前不能用于投资**。
 
 ## 1. 五分钟跑通
 
@@ -52,7 +52,7 @@ python -m qp run --symbols 00700,09988 --as-of 2026-10-27 --offline
 python -m qp factors --symbol 00700 --as-of 2026-10-27
 python -m qp history --symbol 00700 --start 2025-01-01 --end 2026-09-30 --freq QE --run
 python -m qp report --run-id <run_id>
-pytest -q                                      # 113 个测试，全离线（PDF 后端缺失时 1 个跳过）
+pytest -q                                      # 全离线测试（PDF 后端缺失时跳过相关测试）
 ```
 
 生产切换（无需改代码）：
@@ -112,7 +112,7 @@ python -m qp run --symbols 00700,09988 --as-of 2026-10-27
 | `src/qp/storage/` | SQLAlchemy 仓储（SQLite/PG）、ClickHouse 镜像、DDL |
 | `src/qp/pipeline.py` | 四阶段编排：`ingest` / `compute_snapshot` / `run` / `history` |
 | `examples/fixtures/` | 合成演示数据（含重述版本、XBRL、附注文本、汇率、市值、公告日历） |
-| `tests/` | 113 个离线单测/集成测试 |
+| `tests/` | 离线单测与集成测试 |
 
 ---
 
@@ -253,13 +253,13 @@ recurring_net_profit = net_profit − Σ profit_impact
 
 ## 7. 工程化清单与已知边界
 
-**已经做到**：全链路离线可跑、113 个测试、类型化数据契约、字段/单位/币种映射表、PIT 版本库、重述回放、LLM 反幻觉与缓存、结构化质量事件、幂等 upsert、PG/ClickHouse DDL、CLI、CI。
+**已经做到**：全链路离线可跑、自动化测试、类型化数据契约、字段/单位/币种映射表、PIT 版本库、重述回放、LLM 反幻觉与缓存、结构化质量事件、幂等 upsert、PG/ClickHouse DDL、CLI、CI。
 
 **上线前仍需按你的环境补齐**（`docs/OPERATIONS.md` 有详细 checklist）：
 
 1. **公告日历**：把 `refresh_calendar()` 的 HKEXnews 结果持久化到 `announcements.csv`/表；不要用 lag 估计做实盘 PIT。东财/雅虎接口不提供公告日。
-2. **汇率源**：把 `from_boc_sina()` 或你们的自有汇率源接成每日任务；演示用月频 CSV 只是占位。
-3. **市值源**：`market_caps` 目前来自 CSV/行情适配器占位，需要接真实行情（含停牌、汇率柜台 `8xxxx` 人民币柜台的坑）。
+2. **汇率源**：GitHub 工作流试用 `from_boc_sina()` 与 yfinance 的免费日度观察，历史期末汇率仍需可靠来源；演示月频 CSV 只是占位。
+3. **市值源**：GitHub 工作流试用 yfinance 的当前市值并保守延后至次日可用，历史 PIT、行情准确性及停牌/`8xxxx` 人民币柜台口径仍需核验；服务器 cron 不自动采集。
 4. **科目模板**：东财 `STD_ITEM_CODE` 随 `ORG_TYPE`（一般企业/银行/保险/证券）分四套模板；`field_map.py` 的别名需按你们的股票池持续补齐，并监控 `schema_drift` 事件。
 5. **LLM**：生产建议本地 vLLM/Ollama + 严格 grounding + 抽样人工复核；`confidence < 0.6` 的项可配置为不参与因子。
 6. **规模**：`Repository.get_facts()` 目前把单票事实读进 pandas 做窗口去重；全市场回放应下推为 SQL 窗口函数 / ClickHouse `argMax`（DDL 已给出视图）。
