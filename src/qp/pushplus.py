@@ -12,6 +12,21 @@ from .domain import RunSummary, Severity
 PUSHPLUS_URL = "https://www.pushplus.plus/send"
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
+# Fixed diagnostics only: never log the response text, which can contain secrets.
+BUSINESS_ERRORS = {
+    302: "未登录",
+    401: "请求未授权，请检查开放接口是否启用",
+    403: "请求 IP 未授权，请检查 IP 白名单",
+    500: "PushPlus 服务异常",
+    600: "数据异常",
+    805: "无权查看",
+    888: "积分不足",
+    900: "账号受限或请求次数过多，请勿继续重试",
+    903: "用户令牌无效，请核对 PUSHPLUS_TOKEN",
+    905: "账号未实名认证",
+    999: "服务端验证错误，请在 PushPlus 后台检查账号、渠道和消息配置",
+}
+
 
 class PushPlusError(Exception):
     """Delivery failed (messages intentionally exclude response body and credentials)."""
@@ -58,7 +73,25 @@ def send_pushplus(token: str, title: str, content: str, *, timeout: int = 15) ->
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
-        if not isinstance(body, dict) or body.get("code") != 200:
-            raise PushPlusError("PushPlus 未接受消息，请检查服务状态和配置")
-    except (urllib.error.URLError, OSError, ValueError, UnicodeError) as exc:
-        raise PushPlusError("PushPlus 请求失败，请检查网络或服务状态") from exc
+    except urllib.error.HTTPError as exc:
+        # HTTP status is separate from the PushPlus JSON business code.
+        status = exc.code if type(exc.code) is int and 100 <= exc.code <= 599 else None
+        detail = f"（HTTP {status}）" if status is not None else ""
+        raise PushPlusError(f"PushPlus HTTP 请求失败{detail}") from None
+    except (urllib.error.URLError, OSError, ValueError, UnicodeError):
+        # Do not chain the raw error: driver/network errors may contain credentials.
+        raise PushPlusError("PushPlus 请求失败或响应无效，请检查网络和服务状态") from None
+
+    code = body.get("code") if isinstance(body, dict) else None
+    if type(code) is int and code == 200:
+        return
+    if type(code) is int and code in BUSINESS_ERRORS:
+        detail = BUSINESS_ERRORS[code]
+        # A known validation message can help diagnose the WeChat subscription.
+        # Equality against a constant avoids printing arbitrary server responses.
+        if code == 999 and isinstance(body, dict) and any(
+            body.get(key) == "接收用户未关注公众号" for key in ("msg", "data")
+        ):
+            detail = "接收用户未关注公众号，请关注并绑定 PushPlus 公众号"
+        raise PushPlusError(f"PushPlus 未接受消息（业务码 {code}）：{detail}")
+    raise PushPlusError("PushPlus 未接受消息（未知业务码或响应格式；未输出响应内容）")

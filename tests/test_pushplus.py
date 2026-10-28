@@ -90,3 +90,56 @@ def test_cli_delivery_failure_is_nonzero(monkeypatch, capsys):
          patch("qp.pushplus.send_pushplus", side_effect=PushPlusError("推送失败")):
         assert main(["push"]) == 1
     assert "推送失败" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("code", "expected"), [
+    (401, "业务码 401"), (403, "业务码 403"), (500, "业务码 500"),
+    (900, "业务码 900"), (903, "业务码 903"), (905, "业务码 905"), (999, "业务码 999"),
+])
+def test_business_codes_are_actionable_without_response_data(code, expected):
+    response = json.dumps({"code": code, "msg": "secret-token", "data": "secret-token"}).encode()
+    with patch("urllib.request.urlopen", return_value=BytesIO(response)):
+        with pytest.raises(PushPlusError) as exc:
+            send_pushplus("secret-token", "a", "b")
+    assert expected in str(exc.value)
+    assert "secret-token" not in str(exc.value)
+
+
+def test_unsubscribed_wechat_is_safe_to_report():
+    response = json.dumps({"code": 999, "data": "接收用户未关注公众号"}, ensure_ascii=False).encode()
+    with patch("urllib.request.urlopen", return_value=BytesIO(response)):
+        with pytest.raises(PushPlusError, match="未关注公众号"):
+            send_pushplus("secret-token", "a", "b")
+
+
+@pytest.mark.parametrize("response", [b'{"code":"secret-token"}', b'{"code":true}', b'[]', b'{"code":987654321}'])
+def test_unknown_business_codes_do_not_leak_values(response):
+    with patch("urllib.request.urlopen", return_value=BytesIO(response)):
+        with pytest.raises(PushPlusError) as exc:
+            send_pushplus("secret-token", "a", "b")
+    assert "未知业务码" in str(exc.value)
+    assert "secret-token" not in str(exc.value)
+    assert "987654321" not in str(exc.value)
+
+
+def test_http_error_does_not_expose_body_or_chained_error():
+    import traceback
+    from urllib.error import HTTPError
+
+    token = "secret-token"
+    http_error = HTTPError(f"https://example.invalid/{token}", 403, token, {}, BytesIO(token.encode()))
+    with patch("urllib.request.urlopen", side_effect=http_error):
+        with pytest.raises(PushPlusError) as exc:
+            send_pushplus(token, "a", "b")
+    assert "HTTP 403" in str(exc.value)
+    assert "secret-token" not in "".join(traceback.format_exception(exc.value))
+
+
+def test_network_error_does_not_expose_chained_error():
+    import traceback
+
+    token = "secret-token"
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError(token)):
+        with pytest.raises(PushPlusError) as exc:
+            send_pushplus(token, "a", "b")
+    assert token not in "".join(traceback.format_exception(exc.value))
