@@ -1,0 +1,5 @@
+source,statement,period_end,period_type,published_at,available_at,currency,unit_scale,unit_label,raw_label,value
+yfinance,CF,2024-12-31,ANNUAL,2025-03-19T08:00:00,2025-03-19T08:00:00,CNY,1,元(原币),Operating Cash Flow,199000000000
+yfinance,CF,2024-12-31,ANNUAL,2025-03-19T08:00:00,2025-03-19T08:00:00,CNY,1,元(原币),Capital Expenditure,-30000000000
+yfinance,CF,2025-12-31,ANNUAL,2026-03-25T08:00:00,2026-03-25T08:00:00,CNY,1,元(原币),Operating Cash Flow,232000000000
+yfinance,CF,2025-12-31,ANNUAL,2026-03-25T08:00:00,2026-03-25T08:00:00,CNY,1,元(原币),Capital Expenditure,-35000000000

@@ -1,0 +1,7 @@
+symbol,period_end,period_type,published_at,source,title,url,is_restatement
+00700,2023-12-31,ANNUAL,2024-03-20T08:00:00,hkexnews,2023 Annual Report,,0
+00700,2024-12-31,ANNUAL,2025-03-19T08:00:00,hkexnews,2024 Annual Report,,0
+00700,2024-12-31,ANNUAL,2025-10-15T08:00:00,hkexnews,2024 Annual Report (restated),,1
+00700,2025-12-31,ANNUAL,2026-03-25T08:00:00,hkexnews,2025 Annual Report,,0
+09988,2025-03-31,ANNUAL,2025-05-15T08:00:00,hkexnews,2025 Annual Report,,0
+09988,2026-03-31,ANNUAL,2026-05-20T08:00:00,hkexnews,2026 Annual Report,,0
