@@ -28,3 +28,5 @@ Actions 可选变量 `QP_NOTIFY_SYMBOLS`：逗号分隔、五位港股代码，�
 如果 **Check production reference data** 先失败，而 **Push data-quality failure notification** 又失败，表示数据库预检和失败告警是两个独立问题；请先查看前者的诊断，正常财务推送步骤不会执行。PushPlus 告警失败不说明数据库预检已通过。
 
 新版仅输出 PushPlus 的已知业务码及固定提示，不记录 token 和服务端原文。按 [PushPlus 官方返回码说明](https://dev.pushplus.plus/doc/guide/code.html)：903 表示用户令牌无效，905 表示账号未实名认证，900 表示账号受限/请求过多（不要反复重试），401/403 与授权或 IP 白名单有关；999 需要在 PushPlus 后台核对账号、公众号关注/绑定和消息配置。HTTP 状态码与 JSON 业务码不是同一个字段。如果 API 返回 200，仅代表 PushPlus 接收请求，并不保证微信送达。避免在日志、聊天或 issue 中粘贴 token、完整响应或数据库连接地址。若密钥曾被公开，请在服务端立即更换。
+
+如果诊断仍是“未知原因”，新版预检还会显示固定的阶段和类别，不输出异常原文：`url-parse` 是 URL 格式检查，`engine-init` 是驱动初始化，`connection` 是建立数据库连接，`reference-query` 是查询参考表；类别如 `value`、`driver`、`db-operational`、`db-programming` 可以帮助缩小范围。Supabase 的 Session pooler 地址需从项目 Connect 面板完整复制，不能只修改直连地址的端口；GitHub 托管 runner 通常需要 IPv4 可访问的 shared pooler。通过连接后仍须准备真实汇率和市值数据并核验公告日历。
