@@ -1,5 +1,7 @@
 # PushPlus 微信早午晚报告
 
+如果 token 放在 GitHub Actions secrets，请使用 [GitHub Actions 推送说明](GITHUB_PUSHPLUS.md)；仅在 GitHub 保存 token 不会自动启动下面的服务器 cron。
+
 通过常驻 Linux 服务器的 cron，每天北京时间/澳门时间 **08:00、12:00、18:00** 运行一次流水线并发送 PushPlus 消息（含状态、FCF、FCF 收益率和质量告警）。时间可自行调整；周末和节假日也会发送。cron 只会在服务器运行且 cron 服务启动时执行，关机期间不会补发。
 
 ## 配置

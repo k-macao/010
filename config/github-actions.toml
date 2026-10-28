@@ -1,0 +1,26 @@
+# GitHub Actions 生产推送配置。相对路径以 config/ 为基准。
+# 数据库 URL 必须由 QP_DATABASE_URL 环境变量提供；不要把凭据写入本文件。
+[database]
+url = "sqlite:///data/disabled.db"  # 仅占位；生产预检拒绝 SQLite
+
+[sources]
+priority = ["hkexnews", "akshare", "yfinance"]
+fixtures_dir = "../data/production-references"
+securities_file = "securities.csv"
+retry = 2
+retry_backoff_seconds = 1.0
+
+[fx]
+target_currency = "HKD"
+rates_file = "../data/production-references/fx_rates.csv"
+fallback_rates = {}
+max_age_days = 45
+
+[pit]
+lag_days = 1
+backfill_mode = false
+max_staleness_days = 550
+
+[quality]
+strict = true
+fail_on_error = true

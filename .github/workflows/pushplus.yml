@@ -1,0 +1,66 @@
+name: PushPlus 财务早午晚报告
+
+on:
+  schedule:
+    # GitHub cron is UTC: 00:00 / 04:00 / 10:00 = China 08:00 / 12:00 / 18:00.
+    - cron: '0 0 * * *'
+    - cron: '0 4 * * *'
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pushplus-financial-reports
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TZ: Asia/Shanghai
+      QP_PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+      QP_DATABASE_URL: ${{ secrets.QP_DATABASE_URL }}
+      QP_NOTIFY_SYMBOLS: ${{ vars.QP_NOTIFY_SYMBOLS || '00700,09988' }}
+      SCHEDULE: ${{ github.event.schedule }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install pipeline
+        run: python -m pip install -e '.[sources,postgres]'
+      - name: Validate PushPlus configuration
+        run: |
+          if [ -z "$QP_PUSHPLUS_TOKEN" ]; then
+            echo '缺少 Actions secret PUSHPLUS_TOKEN' >&2
+            exit 1
+          fi
+      - name: Check production reference data
+        id: preflight
+        run: python scripts/production_preflight.py
+      - name: Push data-quality failure notification
+        if: ${{ failure() && steps.preflight.outcome == 'failure' }}
+        run: |
+          python - <<'PY'
+          import os
+          from qp.pushplus import send_pushplus
+          send_pushplus(os.environ['QP_PUSHPLUS_TOKEN'], '港股财务报告：生产预检失败',
+                        '数据未推送。请查看 GitHub Actions 预检日志并核对生产数据库配置。')
+          PY
+      - name: Run pipeline and push to WeChat
+        run: |
+          case "$SCHEDULE" in
+            '0 0 * * *') slot='早报' ;;
+            '0 4 * * *') slot='午报' ;;
+            '0 10 * * *') slot='晚报' ;;
+            *) slot='' ;;
+          esac
+          if [ -n "$slot" ]; then
+            python -m qp --config config/github-actions.toml --strict push --slot "$slot"
+          else
+            python -m qp --config config/github-actions.toml --strict push
+          fi
