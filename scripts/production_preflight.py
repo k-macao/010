@@ -8,12 +8,54 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Connection, make_url
+from sqlalchemy.exc import DBAPIError, NoSuchModuleError
 
 from qp.storage.schema import fx_rates, market_caps
 
 
 class PreflightError(Exception):
     pass
+
+
+def diagnose_database_error(exc: Exception) -> str:
+    """Classify failures using fixed messages only; never return exception text or SQL."""
+    if isinstance(exc, NoSuchModuleError):
+        return "PostgreSQL 驱动不可用，请检查连接地址的驱动名称及依赖"
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return "数据库连接超时或被拒绝，请检查网络、端口及防火墙"
+    if not isinstance(exc, DBAPIError):
+        return "数据库不可访问或表结构不兼容（未知原因）"
+
+    original = exc.orig
+    code = getattr(original, "pgcode", None) or getattr(original, "sqlstate", None) or ""
+    if code in {"28000", "28P01"}:
+        return "数据库身份验证失败，请核对用户名、密码及访问规则"
+    if code == "3D000":
+        return "数据库不存在，请核对连接地址中的数据库名"
+    if code in {"42P01", "42703", "3F000"}:
+        return "数据库缺少所需表或字段，请核对项目表结构和 schema"
+    if code == "42501":
+        return "数据库权限不足，请检查连接账户的表和 schema 权限"
+    if code.startswith("08"):
+        return "数据库连接失败，请检查网络、端口及防火墙"
+
+    # libpq connection errors often have no SQLSTATE. Scan only the wrapped driver
+    # error and emit predefined text, not the error itself (which can contain secrets).
+    message = str(original).lower()
+    if any(s in message for s in ("password authentication failed", "authentication failed",
+                                   "no pg_hba.conf entry", "role does not exist")):
+        return "数据库身份验证或访问规则失败，请核对用户名、密码及访问规则"
+    if "database" in message and "does not exist" in message:
+        return "数据库不存在，请核对连接地址中的数据库名"
+    if any(s in message for s in ("could not translate host name", "name or service not known",
+                                   "temporary failure in name resolution", "nodename nor servname")):
+        return "数据库主机名无法解析，请检查 DNS 和网络"
+    if "ssl" in message or "certificate verify failed" in message:
+        return "数据库 TLS/SSL 连接失败，请核对服务端及客户端 TLS 配置"
+    if any(s in message for s in ("connection refused", "connection timed out", "timeout expired",
+                                   "network is unreachable", "no route to host", "could not connect to server")):
+        return "数据库连接超时或被拒绝，请检查网络、端口及防火墙"
+    return "数据库不可访问或表结构不兼容（未知原因）"
 
 
 def check_reference_data(conn: Connection, symbols: list[str], day: date) -> None:
@@ -58,9 +100,9 @@ def main() -> int:
     except PreflightError as exc:
         print(f"生产预检失败：{exc}", file=sys.stderr)
         return 1
-    except Exception:
-        # Driver exceptions can contain database credentials and must not be printed.
-        print("生产预检失败：数据库不可访问或表结构不兼容", file=sys.stderr)
+    except Exception as exc:
+        # Only a fixed diagnostic is printed; URLs, SQL and driver text may contain secrets.
+        print(f"生产预检失败：{diagnose_database_error(exc)}", file=sys.stderr)
         return 1
     print("生产参考数据预检通过；仍需核验数据真实性与公告日。")
     return 0

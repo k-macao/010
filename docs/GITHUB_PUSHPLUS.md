@@ -13,3 +13,12 @@ Actions 可选变量 `QP_NOTIFY_SYMBOLS`：逗号分隔、五位港股代码，�
 - 合并后到 GitHub Actions → “PushPlus 财务早午晚报告” → Run workflow 手动触发一次；查看运行日志及微信，PushPlus API 返回成功不代表已实际送达微信。
 - 不会使用临时 SQLite 保存 PIT 历史；运行前需要在可访问的 PostgreSQL 中准备真实数据。在线源、数据库、Actions 和 PushPlus 网络访问/配额均可能导致失败。
 - 生产库不要并发运行其他同股票池的写入任务；Actions concurrency 只约束本工作流。为避免重复通知没有自动重试，也没有持久化的幂等送达保证。
+
+## 预检排查
+
+`数据库不可访问或表结构不兼容` 是旧版的通用安全提示，单凭该提示无法确定故障；新版将输出 DNS、连接、认证、TLS、库名、表结构、权限或未知原因等固定类别，不会打印数据库 URL、密码、SQL 或驱动原始错误。新版合并到默认分支后重新运行才能看到分类，分类仍可能无法覆盖所有服务商的错误。
+
+- DNS / 连接：`QP_DATABASE_URL` 必须是完整的 PostgreSQL SQLAlchemy URL，不只是数据库名。GitHub 托管 runner 无法直接访问 `localhost` 或一般私网地址；检查数据库服务状态、端口、网络和允许的来源。优先采用私网 self-hosted runner 或受控网络，不要为了测试而无条件公开数据库。
+- 认证 / TLS：核对数据库账号、密码、服务端访问策略与 SSL 参数；URL 中密码包含 `@`、`:`、`/` 等特殊字符时要进行 URL 编码。请在 GitHub 界面修改 secret，不要把密码或 URL 放到聊天和日志里。
+- 表结构 / 权限：确认连接到预期的数据库与 schema，且账号可以查询 `fx_rates` 和 `market_caps`，结构见 `src/qp/storage/schema.py`。`init-db` 会创建项目表但不会提供真实市场数据，运行前确认权限和对现有数据库的影响。
+- 如仍显示未知原因，可在自己的可信机器上独立检查数据库、网络和数据库服务端日志；分享诊断时请先移除 URL、用户名、密码、IP、SQL 参数及其他敏感信息。
