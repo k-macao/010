@@ -57,6 +57,19 @@ def test_capex_sign_convention_is_not_a_conflict():
     assert result.report.get("CAPEX") == -35.0
 
 
+def test_legacy_total_liabilities_fact_is_not_compared_as_total_debt():
+    liabilities = _row("akshare", "TOTAL_DEBT", 800.0)
+    liabilities["raw_label"] = "总负债"
+    debt = _row("yfinance", "TOTAL_DEBT", 300.0)
+    debt["raw_label"] = "Total Debt"
+    result = MultiSourceAligner().align(
+        pd.DataFrame([liabilities, debt]), "00700", date(2025, 12, 31), date(2026, 10, 27)
+    )
+    assert result.conflicts == []
+    assert result.report.get("TOTAL_DEBT") == 300.0
+    assert result.report.facts["TOTAL_DEBT"].sources == ("yfinance",)
+
+
 def test_fallback_source_fills_missing_field():
     df = pd.DataFrame([
         _row("hkexnews", "OCF", 100.0),

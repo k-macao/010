@@ -38,6 +38,7 @@ from ..domain import (
     TOTAL_ASSETS,
     TOTAL_DEBT,
     TOTAL_EQUITY,
+    TOTAL_LIABILITIES,
     StatementType,
 )
 from ..util import normalize_label
@@ -162,9 +163,16 @@ def _specs() -> tuple[FieldSpec, ...]:
                      "cashandcashequivalents", "cashcashequivalentsandshortterminvestments"),
             patterns=(r"现金及现金(等价物|等值)", r"cashandcashequivalent"),
             sign="stock", priority=60),
+        # Total liabilities and interest-bearing/aggregate debt are not interchangeable.
+        # Yahoo's "Total Debt" must never be reconciled against AkShare's "总负债".
         FieldSpec(TOTAL_DEBT, BS,
-            aliases=("总负债", "负债总额", "totalliabilities", "totaldebt"),
-            patterns=(r"^(总负债|负债总额)$", r"^total(liabilities|debt)$"),
+            aliases=("总债务", "债务总额", "有息负债", "借款总额", "totaldebt"),
+            patterns=(r"^(总债务|债务总额|有息负债|借款总额|totaldebt)$",),
+            sign="stock", priority=60),
+        FieldSpec(TOTAL_LIABILITIES, BS,
+            aliases=("总负债", "负债总额", "负债总计", "totalliabilities",
+                     "totalliabilitiesnetminorityinterest"),
+            patterns=(r"^(总负债|负债总额|负债总计)$", r"^totalliabilities(.*)?$"),
             sign="stock", priority=60),
         FieldSpec(TOTAL_ASSETS, BS,
             aliases=("总资产", "资产总额", "totalassets"),

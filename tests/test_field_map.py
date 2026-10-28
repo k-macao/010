@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from qp.clean.field_map import ITEM_CODE_MAP, FieldMatcher
-from qp.domain import CAPEX, NET_PROFIT, OCF, PPE, REVENUE, StatementType
+from qp.domain import CAPEX, NET_PROFIT, OCF, PPE, REVENUE, TOTAL_DEBT, TOTAL_LIABILITIES, StatementType
 
 
 @pytest.fixture(scope="module")
@@ -50,6 +50,13 @@ def test_statement_scope(matcher):
     assert matcher.match("经营活动产生的现金流量净额", StatementType.IS) is None
     assert matcher.match("营业收入", StatementType.IS).field == REVENUE
     assert matcher.match("营业收入", StatementType.CF) is None
+
+
+def test_total_liabilities_are_not_mapped_as_total_debt(matcher):
+    assert matcher.match("总负债", StatementType.BS).field == TOTAL_LIABILITIES
+    assert matcher.match("Total Liabilities Net Minority Interest", StatementType.BS).field == TOTAL_LIABILITIES
+    assert matcher.match("Total Debt", StatementType.BS).field == TOTAL_DEBT
+    assert matcher.match("有息负债", StatementType.BS).field == TOTAL_DEBT
 
 
 def test_loss_sign_and_aggregation(matcher):
