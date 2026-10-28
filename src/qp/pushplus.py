@@ -28,7 +28,7 @@ def format_summary(summary: RunSummary, *, offline: bool = False) -> str:
     if offline:
         lines.append("【离线演示：全部数据为合成数据，不可用于投资】")
     else:
-        lines.append("注意：默认汇率、市值及公告日历为合成示例，需替换后才能用于投资。")
+        lines.append("注意：请核验数据来源、汇率、市值及公告日；默认参考数据为合成示例。")
     for snap in summary.snapshots:
         lines.append(f"\n{snap.symbol}  状态：{snap.status}  财报期：{snap.period_end or '无'}")
         if snap.fcf:
