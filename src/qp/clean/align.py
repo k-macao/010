@@ -15,8 +15,8 @@ from typing import Iterable
 
 import pandas as pd
 
-from ..domain import CAPEX, OCF, AlignedFact, AlignedReport
-from ..util import rel_diff, to_date, to_datetime
+from ..domain import CAPEX, OCF, TOTAL_DEBT, AlignedFact, AlignedReport
+from ..util import normalize_label, rel_diff, to_date, to_datetime
 
 
 @dataclass
@@ -58,6 +58,16 @@ class MultiSourceAligner:
             return AlignResult(AlignedReport(symbol, period_end, "ANNUAL", to_date(as_of)))
         subset["period_end"] = subset["period_end"].astype(str)
         subset = subset[subset["period_end"] == period_end.isoformat()]
+        # Older persisted rows may contain the historical mapper's invalid
+        # TOTAL_DEBT <- total-liabilities alias. Do not compare those with real
+        # debt values after the mapping correction; new ingests map liabilities
+        # to their own canonical field.
+        if "raw_label" in subset.columns:
+            normalized = subset["raw_label"].fillna("").map(normalize_label)
+            liability_only = normalized.isin({"总负债", "负债总额", "负债总计"}) | normalized.str.startswith(
+                "totalliabilities"
+            )
+            subset = subset[~((subset["field"] == TOTAL_DEBT) & liability_only)]
         if subset.empty:
             return AlignResult(AlignedReport(symbol, period_end, "ANNUAL", to_date(as_of)))
 

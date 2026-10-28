@@ -79,4 +79,6 @@ ORDER BY ..., available_at DESC, published_at DESC;
 | `capex_to_ocf` | `\|CapEx\| / \|OCF\|` | ratio |
 | `net_debt_to_fcf` | `(TOTAL_DEBT − CASH) / standard_fcf` | ratio |
 
+`TOTAL_DEBT` 仅表示债务/有息负债；`TOTAL_LIABILITIES`（总负债）是单独的资产负债表字段，不能与 Yahoo 的 `Total Debt` 混用计算净债务。
+
 所有分母为 0 时因子不产出或写 NaN，并在 `inputs` 里保留原始输入以便复算。
