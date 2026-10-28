@@ -1,0 +1,5 @@
+source,statement,period_end,period_type,published_at,available_at,currency,unit_scale,unit_label,raw_label,value
+akshare,CF,2025-03-31,ANNUAL,2025-05-15T08:00:00,2025-05-15T08:00:00,CNY,1000,人民币千元,经营活动产生的现金流量净额,160000000
+akshare,CF,2025-03-31,ANNUAL,2025-05-15T08:00:00,2025-05-15T08:00:00,CNY,1000,人民币千元,购建固定资产、无形资产和其他长期资产支付的现金,28000000
+akshare,CF,2026-03-31,ANNUAL,2026-05-20T08:00:00,2026-05-20T08:00:00,CNY,1000,人民币千元,经营活动产生的现金流量净额,175000000
+akshare,CF,2026-03-31,ANNUAL,2026-05-20T08:00:00,2026-05-20T08:00:00,CNY,1000,人民币千元,购建固定资产、无形资产和其他长期资产支付的现金,32000000

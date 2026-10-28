@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime artifacts (never commit raw vendor data / generated reports)
+data/
+reports/
+*.db
+*.db-wal
+*.db-shm
+*.log
+.env
+
+# Optional local overrides
+config/local.toml

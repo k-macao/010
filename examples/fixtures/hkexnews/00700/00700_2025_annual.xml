@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:ifrs-full="http://xbrl.ifrs.org/taxonomy/2023/ifrs-full"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
+  <xbrli:context id="FY2025">
+    <xbrli:entity><xbrli:identifier scheme="http://www.hkexnews.hk">00700</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="FY2025I">
+    <xbrli:entity><xbrli:identifier scheme="http://www.hkexnews.hk">00700</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="CNY"><xbrli:measure>iso4217:CNY</xbrli:measure></xbrli:unit>
+  <ifrs-full:NetCashFlowsFromUsedInOperatingActivities contextRef="FY2025" unitRef="CNY" scale="3" decimals="-3">240000000</ifrs-full:NetCashFlowsFromUsedInOperatingActivities>
+  <ifrs-full:PaymentsToAcquirePropertyPlantAndEquipment contextRef="FY2025" unitRef="CNY" scale="3" decimals="-3">-35000000</ifrs-full:PaymentsToAcquirePropertyPlantAndEquipment>
+  <ifrs-full:Revenue contextRef="FY2025" unitRef="CNY" scale="3" decimals="-3">660000000</ifrs-full:Revenue>
+  <ifrs-full:ProfitLoss contextRef="FY2025" unitRef="CNY" scale="3" decimals="-3">130000000</ifrs-full:ProfitLoss>
+  <ifrs-full:GainLossOnFairValueAdjustmentInvestmentProperty contextRef="FY2025" unitRef="CNY" scale="3" decimals="-3">8000000</ifrs-full:GainLossOnFairValueAdjustmentInvestmentProperty>
+  <ifrs-full:CashAndCashEquivalents contextRef="FY2025I" unitRef="CNY" scale="3" decimals="-3">200000000</ifrs-full:CashAndCashEquivalents>
+  <ifrs-full:Liabilities contextRef="FY2025I" unitRef="CNY" scale="3" decimals="-3">300000000</ifrs-full:Liabilities>
+</xbrli:xbrl>

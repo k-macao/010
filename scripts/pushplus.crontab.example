@@ -1,0 +1,5 @@
+# 在支持 CRON_TZ 的 cron（如 cronie）中使用；请先把路径替换成仓库绝对路径。
+# UTC 00:00 / 04:00 / 10:00 = 北京/澳门时间每日 08:00 / 12:00 / 18:00。
+# .env 中设置 QP_PUSHPLUS_TOKEN、QP_NOTIFY_SYMBOLS 等；脚本使用本机持久数据库。
+CRON_TZ=UTC
+0 0,4,10 * * * /absolute/path/to/010/scripts/pushplus-cron.sh >> /absolute/path/to/010/pushplus.log 2>&1

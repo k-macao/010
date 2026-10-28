@@ -1,0 +1,83 @@
+# 量化财务数据流水线主配置。所有相对路径基于 <repo root>。
+# 环境变量优先级高于本文件；CLI 参数优先级高于环境变量。
+
+[database]
+url = "sqlite:///data/quant.db"       # 生产: postgresql+psycopg2://quant:quant@localhost:5432/quant
+echo = false
+
+[clickhouse]
+enabled = false
+url = "http://localhost:8123"
+database = "quant"
+user = "quant"
+password = ""
+table = "factors"
+
+[sources]
+# 主源优先，缺失字段由后备源补齐；同字段冲突时按此优先级取值。
+priority = ["hkexnews", "akshare", "yfinance"]
+fixtures_dir = "examples/fixtures"    # 离线演示数据
+securities_file = "config/securities.csv"
+retry = 2
+retry_backoff_seconds = 1.0
+request_timeout_seconds = 30
+hkexnews_base = "https://www1.hkexnews.hk"
+# stockId 内部编号的解析接口（HKEXnews 未公开文档，可能变化；可在本地缓存后覆盖）
+hkexnews_stock_list_path = "/ncms/script/eds/activestock_sehk_e.json"
+hkexnews_search_path = "/search/titleSearchServlet.do"
+hkexnews_financial_category = "40000"
+max_document_bytes = 25000000
+raw_dir = "data/raw/hkexnews"
+
+[fx]
+target_currency = "HKD"
+rates_file = "examples/fixtures/fx_rates.csv"
+# 兜底汇率：1 单位 key 币种 = value 单位目标币种。仅用于离线/缺失行情，生产应禁用。
+fallback_rates = { CNY = 1.09, USD = 7.80, HKD = 1.0 }
+max_age_days = 45   # 月频汇率表：期归一化允许 45 天内的最新汇率
+
+[pit]
+# 披露日之后的可交易延迟（防止公告日盘中未来函数）
+lag_days = 1
+# 回填历史数据：保留 fixture/公告里的 available_at，而不是用 ingest 时间覆盖
+backfill_mode = false
+# 因子最多使用多久以前的财报（天）
+max_staleness_days = 550
+
+[align]
+# 跨源相对容差，超过则记为冲突
+conflict_rel_tolerance = 0.01
+# 严格模式下冲突字段进入隔离区（值为 null），不参与因子计算
+quarantine_on_conflict = false
+
+[fcf]
+# auto = 取 |capex|；signed = OCF + capex(负值流出)；positive_outflow/negative_outflow = 校验符号后取 abs
+capex_sign_policy = "auto"
+formula_version = "fcf-v1"
+
+[notes]
+keywords = ["非经常性损益", "其他收益", "其他收入", "公允价值变动", "政府补助", "匯兌", "汇兑", "诉讼", "赔偿", "non-recurring", "other gains", "fair value"]
+context_chars = 700
+max_chunks = 20
+max_note_chars = 12000
+
+[llm]
+enabled = false
+base_url = "http://localhost:11434/v1"   # OpenAI 兼容 /chat/completions
+model = "qwen2.5:7b"
+api_key_env = "QP_LLM_API_KEY"
+timeout_seconds = 60
+retries = 2
+temperature = 0.0
+strict_grounding = true                  # 金额必须能在附注原文中定位，否则丢弃
+cache_dir = "data/cache/llm"
+prompt_version = "notes-zh-v1"
+
+[quality]
+strict = false
+fail_on_error = false
+alert_webhook_url_env = "QP_ALERT_WEBHOOK_URL"
+
+[reports]
+output_dir = "reports"
+log_level = "INFO"

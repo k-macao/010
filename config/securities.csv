@@ -1,0 +1,5 @@
+symbol,name,report_currency,fiscal_year_end,market_currency,yfinance_ticker,akshare_currency
+00700,腾讯控股,CNY,12-31,HKD,0700.HK,CNY
+09988,阿里巴巴-W,CNY,03-31,HKD,9988.HK,CNY
+00005,汇丰控股,USD,12-31,HKD,0005.HK,CNY
+00001,长和,HKD,12-31,HKD,0001.HK,CNY
