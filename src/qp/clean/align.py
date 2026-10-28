@@ -15,7 +15,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from ..domain import CAPEX, OCF, TOTAL_DEBT, AlignedFact, AlignedReport
+from ..domain import CAPEX, IMPAIRMENT_LOSS, OCF, TOTAL_DEBT, AlignedFact, AlignedReport
 from ..util import normalize_label, rel_diff, to_date, to_datetime
 
 
@@ -67,7 +67,10 @@ class MultiSourceAligner:
             liability_only = normalized.isin({"总负债", "负债总额", "负债总计"}) | normalized.str.startswith(
                 "totalliabilities"
             )
-            subset = subset[~((subset["field"] == TOTAL_DEBT) & liability_only)]
+            combined_impairment = normalized.isin({"减值及拨备", "减值和拨备", "impairmentandprovisions"})
+            invalid_debt = (subset["field"] == TOTAL_DEBT) & liability_only
+            invalid_impairment = (subset["field"] == IMPAIRMENT_LOSS) & combined_impairment
+            subset = subset[~(invalid_debt | invalid_impairment)]
         if subset.empty:
             return AlignResult(AlignedReport(symbol, period_end, "ANNUAL", to_date(as_of)))
 

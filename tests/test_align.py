@@ -70,6 +70,21 @@ def test_legacy_total_liabilities_fact_is_not_compared_as_total_debt():
     assert result.report.facts["TOTAL_DEBT"].sources == ("yfinance",)
 
 
+def test_legacy_combined_impairment_fact_is_not_compared_as_impairment_loss():
+    combined = _row("akshare", "IMPAIRMENT_LOSS", 14.6)
+    combined["statement"] = "IS"
+    combined["raw_label"] = "减值及拨备"
+    impairment = _row("yfinance", "IMPAIRMENT_LOSS", 9.5)
+    impairment["statement"] = "IS"
+    impairment["raw_label"] = "Impairment Of Capital Assets"
+    result = MultiSourceAligner().align(
+        pd.DataFrame([combined, impairment]), "00700", date(2025, 12, 31), date(2026, 10, 27)
+    )
+    assert result.conflicts == []
+    assert result.report.get("IMPAIRMENT_LOSS") == 9.5
+    assert result.report.facts["IMPAIRMENT_LOSS"].sources == ("yfinance",)
+
+
 def test_fallback_source_fills_missing_field():
     df = pd.DataFrame([
         _row("hkexnews", "OCF", 100.0),
