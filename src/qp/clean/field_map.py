@@ -25,6 +25,7 @@ from ..domain import (
     FAIR_VALUE_GAIN,
     FX_GAIN_LOSS,
     GOVERNMENT_GRANT,
+    IMPAIRMENT_AND_PROVISIONS,
     IMPAIRMENT_LOSS,
     INVESTMENT_PROPERTY,
     LITIGATION_SETTLEMENT,
@@ -128,7 +129,13 @@ def _specs() -> tuple[FieldSpec, ...]:
             aliases=("资产减值损失", "资产减值亏损", "减值亏损", "商誉减值", "金融资产减值损失",
                      "impairmentloss", "impairmentofassets", "impairmentcharges"),
             patterns=(r".*减值.*(损失|亏损|拨备|费用)", r"impairment"),
-            excludes=("拨回", "转回", "reversal"),
+            excludes=("拨回", "转回", "reversal", "及拨备", "andprovisions"),
+            sign="as_loss", aggregation="sum", priority=70),
+        # Combined impairment-and-provision lines are broader than asset impairment.
+        # Keep them separate from Yahoo's narrower "Impairment of Capital Assets".
+        FieldSpec(IMPAIRMENT_AND_PROVISIONS, IS,
+            aliases=("减值及拨备", "减值和拨备", "impairmentandprovisions"),
+            patterns=(r"减值(及|和)拨备", r"impairmentandprovisions"),
             sign="as_loss", aggregation="sum", priority=70),
         FieldSpec(GOVERNMENT_GRANT, IS,
             aliases=("政府补助", "政府补贴", "政府资助", "governmentgrants", "governmentsubsidies"),

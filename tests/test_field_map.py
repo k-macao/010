@@ -3,7 +3,18 @@ from __future__ import annotations
 import pytest
 
 from qp.clean.field_map import ITEM_CODE_MAP, FieldMatcher
-from qp.domain import CAPEX, NET_PROFIT, OCF, PPE, REVENUE, TOTAL_DEBT, TOTAL_LIABILITIES, StatementType
+from qp.domain import (
+    CAPEX,
+    IMPAIRMENT_AND_PROVISIONS,
+    IMPAIRMENT_LOSS,
+    NET_PROFIT,
+    OCF,
+    PPE,
+    REVENUE,
+    TOTAL_DEBT,
+    TOTAL_LIABILITIES,
+    StatementType,
+)
 
 
 @pytest.fixture(scope="module")
@@ -61,8 +72,14 @@ def test_total_liabilities_are_not_mapped_as_total_debt(matcher):
 
 def test_loss_sign_and_aggregation(matcher):
     hit = matcher.match("资产减值损失", StatementType.IS)
+    assert hit.field == IMPAIRMENT_LOSS
     assert hit.spec.sign == "as_loss"
     assert hit.spec.aggregation == "sum"
+
+
+def test_combined_impairment_and_provisions_are_separate(matcher):
+    assert matcher.match("减值及拨备", StatementType.IS).field == IMPAIRMENT_AND_PROVISIONS
+    assert matcher.match("Impairment and Provisions", StatementType.IS).field == IMPAIRMENT_AND_PROVISIONS
 
 
 def test_item_code_wins(matcher):
