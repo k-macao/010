@@ -6,6 +6,10 @@
 
 ---
 
+## 微信早午晚推送
+
+支持 PushPlus 推送流水线摘要到微信。配置 token 后，可用服务器 cron 默认每日北京时间 08:00、12:00、18:00 运行；不会自动安装 cron，需按 [`docs/PUSHPLUS.md`](docs/PUSHPLUS.md) 配置和启用。默认汇率、市值、公告日历仍是合成示例，**配置真实数据前不能用于投资**。
+
 ## 1. 五分钟跑通
 
 ```bash
@@ -48,7 +52,7 @@ python -m qp run --symbols 00700,09988 --as-of 2026-10-27 --offline
 python -m qp factors --symbol 00700 --as-of 2026-10-27
 python -m qp history --symbol 00700 --start 2025-01-01 --end 2026-09-30 --freq QE --run
 python -m qp report --run-id <run_id>
-pytest -q                                      # 104 个测试，全离线（PDF 后端缺失时 1 个跳过）
+pytest -q                                      # 113 个测试，全离线（PDF 后端缺失时 1 个跳过）
 ```
 
 生产切换（无需改代码）：
@@ -108,7 +112,7 @@ python -m qp run --symbols 00700,09988 --as-of 2026-10-27
 | `src/qp/storage/` | SQLAlchemy 仓储（SQLite/PG）、ClickHouse 镜像、DDL |
 | `src/qp/pipeline.py` | 四阶段编排：`ingest` / `compute_snapshot` / `run` / `history` |
 | `examples/fixtures/` | 合成演示数据（含重述版本、XBRL、附注文本、汇率、市值、公告日历） |
-| `tests/` | 104 个离线单测/集成测试 |
+| `tests/` | 113 个离线单测/集成测试 |
 
 ---
 
@@ -249,7 +253,7 @@ recurring_net_profit = net_profit − Σ profit_impact
 
 ## 7. 工程化清单与已知边界
 
-**已经做到**：全链路离线可跑、104 个测试、类型化数据契约、字段/单位/币种映射表、PIT 版本库、重述回放、LLM 反幻觉与缓存、结构化质量事件、幂等 upsert、PG/ClickHouse DDL、CLI、CI。
+**已经做到**：全链路离线可跑、113 个测试、类型化数据契约、字段/单位/币种映射表、PIT 版本库、重述回放、LLM 反幻觉与缓存、结构化质量事件、幂等 upsert、PG/ClickHouse DDL、CLI、CI。
 
 **上线前仍需按你的环境补齐**（`docs/OPERATIONS.md` 有详细 checklist）：
 

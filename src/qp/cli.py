@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
-from datetime import date
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -61,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_demo = sub.add_parser("demo", help="offline end-to-end demo (fixtures → factors → report)")
     p_demo.add_argument("--symbol", default="00700")
     p_demo.add_argument("--as-of", default=None)
+
+    p_push = sub.add_parser("push", help="run pipeline and send a PushPlus WeChat report")
+    p_push.add_argument("--symbols", default=os.environ.get("QP_NOTIFY_SYMBOLS", "00700,09988"))
+    p_push.add_argument("--as-of", default=None, help="evaluation date (default: China local date)")
+    p_push.add_argument("--slot", choices=("早报", "午报", "晚报"), default=None)
+    p_push.add_argument("--dry-run", action="store_true", help="print report without sending")
 
     sub.add_parser("check", help="validate config and storage connectivity")
     return parser
@@ -118,6 +126,42 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(json.dumps(stored, ensure_ascii=False, indent=2))
         return 0
+
+    if args.command == "push":
+        from .pushplus import PushPlusError, current_slot, format_summary, send_pushplus
+
+        token = os.environ.get("QP_PUSHPLUS_TOKEN", "").strip()
+        if not token and not args.dry_run:
+            print("未配置 QP_PUSHPLUS_TOKEN，未运行流水线或发送推送", file=sys.stderr)
+            return 1
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        as_of = to_date(args.as_of) if args.as_of else now.date()
+        title = f"港股财务{args.slot or current_slot(now)} {as_of}"
+        symbols = _symbols(args.symbols)
+        if not symbols:
+            print("股票列表不能为空", file=sys.stderr)
+            return 1
+        try:
+            pipeline = Pipeline(config)
+            summary = pipeline.run(symbols, as_of=as_of, offline=True if args.offline else None,
+                                   strict=True if args.strict else None)
+            content = format_summary(summary, offline=config.sources.offline)
+            status = 0 if summary.status == "OK" else 1
+        except Exception as exc:
+            # Exception messages may contain credentials or vendor response bodies.
+            content = f"日期：{as_of}\n运行状态：FAILED\n流水线运行失败，请检查本地运行环境。"
+            status = 1
+            print(f"流水线运行失败（{type(exc).__name__}），正在发送失败通知", file=sys.stderr)
+        if args.dry_run:
+            print(f"{title}\n{content}")
+            return status
+        try:
+            send_pushplus(token, title, content)
+        except PushPlusError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print("PushPlus 已接受消息；微信实际送达以 PushPlus 为准。")
+        return status
 
     pipeline = Pipeline(config)
 
