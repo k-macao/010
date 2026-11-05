@@ -14,12 +14,28 @@ import pandas as pd
 
 from . import __version__
 from .config import load_config
+from .errors import ConfigError
 from .logging_utils import get_logger, setup_logging
 from .pipeline import Pipeline
 from .reports import ReportWriter
 from .util import to_date
 
 logger = get_logger(__name__)
+
+
+# Global flags are also accepted AFTER the sub-command (``qp run --offline``), which
+# is how the README documents them. SUPPRESS keeps the top-level value intact when
+# the flag is given only before the sub-command.
+def _subparser(sub: argparse._SubParsersAction, name: str, **kwargs: Any) -> argparse.ArgumentParser:
+    parser = sub.add_parser(name, **kwargs)
+    parser.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    parser.add_argument("--offline", action="store_true", default=argparse.SUPPRESS,
+                        help="use examples/fixtures, no network")
+    parser.add_argument("--db-url", default=argparse.SUPPRESS, help="override database URL")
+    parser.add_argument("--strict", action="store_true", default=argparse.SUPPRESS,
+                        help="quarantine symbols with ERROR events")
+    parser.add_argument("--log-level", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    return parser
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,42 +51,42 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-level", default=None)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("init-db", help="create/upgrade relational schema")
+    _subparser(sub, "init-db", help="create/upgrade relational schema")
 
-    p_ingest = sub.add_parser("ingest", help="fetch + clean + store raw/facts (no factor write)")
+    p_ingest = _subparser(sub, "ingest", help="fetch + clean + store raw/facts (no factor write)")
     p_ingest.add_argument("--symbols", default="00700,09988")
     p_ingest.add_argument("--as-of", default=None)
 
-    p_run = sub.add_parser("run", help="full pipeline for one as-of date")
+    p_run = _subparser(sub, "run", help="full pipeline for one as-of date")
     p_run.add_argument("--symbols", default="00700,09988")
     p_run.add_argument("--as-of", default=None)
     p_run.add_argument("--no-store", action="store_true", help="compute but do not write features")
 
-    p_factors = sub.add_parser("factors", help="read stored PIT factors")
+    p_factors = _subparser(sub, "factors", help="read stored PIT factors")
     p_factors.add_argument("--symbol", required=True)
     p_factors.add_argument("--as-of", default=None)
 
-    p_history = sub.add_parser("history", help="PIT factor replay over a date grid")
+    p_history = _subparser(sub, "history", help="PIT factor replay over a date grid")
     p_history.add_argument("--symbol", required=True)
     p_history.add_argument("--start", required=True)
     p_history.add_argument("--end", required=True)
     p_history.add_argument("--freq", default="QE", help="pandas offset alias: QE / ME / YE")
     p_history.add_argument("--run", action="store_true", help="ingest fixtures first")
 
-    p_report = sub.add_parser("report", help="print a stored run manifest")
+    p_report = _subparser(sub, "report", help="print a stored run manifest")
     p_report.add_argument("--run-id", required=True)
 
-    p_demo = sub.add_parser("demo", help="offline end-to-end demo (fixtures → factors → report)")
+    p_demo = _subparser(sub, "demo", help="offline end-to-end demo (fixtures → factors → report)")
     p_demo.add_argument("--symbol", default="00700")
     p_demo.add_argument("--as-of", default=None)
 
-    p_push = sub.add_parser("push", help="run pipeline and send a PushPlus WeChat report")
+    p_push = _subparser(sub, "push", help="run pipeline and send a PushPlus WeChat report")
     p_push.add_argument("--symbols", default=os.environ.get("QP_NOTIFY_SYMBOLS", "00700,09988"))
     p_push.add_argument("--as-of", default=None, help="evaluation date (default: China local date)")
     p_push.add_argument("--slot", choices=("早报", "午报", "晚报"), default=None)
     p_push.add_argument("--dry-run", action="store_true", help="print report without sending")
 
-    sub.add_parser("check", help="validate config and storage connectivity")
+    _subparser(sub, "check", help="validate config and storage connectivity")
     return parser
 
 
@@ -95,7 +111,11 @@ def _as_of(value: str | None) -> date:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    config = _config_for(args)
+    try:
+        config = _config_for(args)
+    except ConfigError as exc:
+        print(f"配置错误：{exc}", file=sys.stderr)
+        return 2
     setup_logging(config.reports.log_level)
 
     if args.command == "check":

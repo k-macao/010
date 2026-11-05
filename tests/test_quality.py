@@ -79,3 +79,34 @@ def test_strict_quarantine_produces_error():
     checker = QualityChecker("r", strict=True)
     events = checker.check_alignment(aligned, align_result, date(2026, 10, 27))
     assert QualityChecker.has_errors(events)
+
+
+def test_stale_fx_is_reported_as_a_warning():
+    """fx.max_age_days must surface as a quality event, not only a fact tag."""
+    import pandas as pd
+
+    row = {
+        "symbol": "00700", "source": "akshare", "statement": "CF",
+        "period_end": "2025-12-31", "period_type": "ANNUAL", "field": "OCF",
+        "value": 100.0, "value_native": 90.9, "currency": "HKD",
+        "report_currency": "CNY", "fx_rate": 1.1, "fx_as_of": "2019-01-01",
+        "published_at": datetime(2026, 3, 25), "available_at": datetime(2026, 3, 25),
+        "quality": '["fx_stale"]',
+    }
+    aligner = MultiSourceAligner()
+    result = aligner.align(pd.DataFrame([row]), "00700", date(2025, 12, 31), date(2026, 10, 27))
+    events = _event_checker().check_alignment(result.report, result, date(2026, 10, 27))
+    assert any(e.check == "fx_stale" and e.severity is Severity.WARN for e in events)
+
+
+def test_stale_market_cap_is_reported():
+    checker = QualityChecker("r", market_cap_max_age_days=10)
+    _, align_result = _aligned_with_conflict()
+    fair = FCFResult("00700", date(2025, 12, 31), "HKD", 100.0, 20.0, 20.0,
+                     80.0, 80.0, 1.0, date(2025, 12, 1), 80.0, 0.0, "auto")
+    events = checker.check_snapshot(align_result.report, fair, date(2026, 10, 27),
+                                    (1e12, "HKD", date(2026, 1, 1)))
+    assert any(e.check == "stale_market_cap" for e in events)
+    fresh = checker.check_snapshot(align_result.report, fair, date(2026, 10, 27),
+                                   (1e12, "HKD", date(2026, 10, 26)))
+    assert not any(e.check == "stale_market_cap" for e in fresh)

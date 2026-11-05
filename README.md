@@ -26,8 +26,9 @@ python -m qp demo --as-of 2026-10-27
 ```
 run_id   : run-20261027T...  status: OK   as_of=2026-10-27
 counts   : {"raw_reports": 17, "normalized_facts": 71, "note_items": 6, "features": 12, ...}
-quality  : 0 ERROR / 1 WARN / 27 INFO
-  - [WARN] cross_source_conflict: field=OCF: yfinance=2.529e+11 vs hkexnews=2.616e+11 (Δ=3.33%)
+quality  : 0 ERROR / 2 WARN / 23 INFO
+  - [WARN] 00700 cross_source_conflict: field=OCF: yfinance=2.529e+11 vs hkexnews=2.616e+11 (Δ=3.33%)
+  - [WARN] 00700 stale_market_cap: latest market cap is 119 days old (as_of 2026-06-30) ...
 
 00700  status=OK  period_end=2025-12-31
   OCF=261,600,000,000  CapEx=38,150,000,000  Standard_FCF=223,450,000,000 HKD
@@ -36,10 +37,10 @@ quality  : 0 ERROR / 1 WARN / 27 INFO
   net_debt_to_fcf           0.487805 ratio
 
 PIT replay (look-ahead check):
-     as_of status period_end  standard_fcf  fcf_yield  recurring_net_profit
-2025-06-30     OK 2024-12-31  1.836000e+11   0.054500      1.195560e+11
-2025-12-31     OK 2024-12-31  1.809000e+11   0.050715      1.173960e+11   ← 重述生效
-2026-06-30     OK 2025-12-31  2.234500e+11   0.059342      1.288380e+11   ← 新财报生效
+     as_of status period_end  standard_fcf  fcf_yield  recurring_net_profit          ocf        capex
+2025-06-30     OK 2024-12-31  1.836000e+11   0.054500          1.195560e+11 2.160000e+11 3.240000e+10
+2025-12-31     OK 2024-12-31  1.809000e+11   0.050715          1.173960e+11 2.138400e+11 3.294000e+10   ← 重述生效
+2026-06-30     OK 2025-12-31  2.234500e+11   0.059342          1.288380e+11 2.616000e+11 3.815000e+10   ← 新财报生效
 ```
 
 其余命令：
@@ -272,5 +273,6 @@ recurring_net_profit = net_profit − Σ profit_impact
 - [`docs/PIT.md`](docs/PIT.md) — 未来函数的五种来源与验证方法
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — 部署、调度、监控、故障处理
 - [`docs/SOURCES.md`](docs/SOURCES.md) — 数据源实测结论与参考链接
+- [`docs/REVIEW.md`](docs/REVIEW.md) — 代码审查记录：已修复问题、遗留风险与复现方法
 
 **演示数据声明**：`examples/fixtures/` 全部是合成数字，只用于验证工程逻辑，不可用于任何研究或交易决策。`scripts/make_fixtures.py` 可一键重建。

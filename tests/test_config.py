@@ -46,3 +46,8 @@ def test_unknown_key_and_bad_values(tmp_path):
     path.write_text("[fcf]\nunknown_key = 1\n", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config(path)
+
+
+def test_missing_explicit_config_raises_instead_of_silently_using_default():
+    with pytest.raises(ConfigError, match="config file not found"):
+        load_config("does/not/exist.toml")

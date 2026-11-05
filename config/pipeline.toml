@@ -43,6 +43,8 @@ lag_days = 1
 backfill_mode = false
 # 因子最多使用多久以前的财报（天）
 max_staleness_days = 550
+# 市值超过这个天数就打 WARN（fcf_yield 的分母不能悄悄用过时市值）
+market_cap_max_age_days = 10
 
 [align]
 # 跨源相对容差，超过则记为冲突

@@ -47,3 +47,11 @@ def test_lag_delays_availability():
     df = pd.DataFrame([_fact("2025-03-19T08:00:00", "2025-03-19T08:00:00", 200e9)])
     assert len(visible_at(df, date(2025, 3, 19), lag_days=1)) == 0
     assert len(visible_at(df, date(2025, 3, 20), lag_days=1)) == 1
+
+
+def test_float_noise_is_not_a_restatement():
+    df = pd.DataFrame([
+        _fact("2025-03-19T08:00:00", "2025-03-19T08:00:00", 200e9),
+        _fact("2025-10-15T08:00:00", "2025-10-15T08:00:00", 200e9 * (1 + 1e-12)),
+    ])
+    assert detect_restatements(df) == []

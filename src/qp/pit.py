@@ -11,6 +11,7 @@ Rules enforced here:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
@@ -64,7 +65,12 @@ def detect_restatements(df: pd.DataFrame) -> list[RestatementEvent]:
         versions = group.sort_values("available_at")
         previous: pd.Series | None = None
         for _, row in versions.iterrows():
-            if previous is not None and float(row["value"]) != float(previous["value"]):
+            # Tolerate float noise (FX round-trips in different order): only a real
+            # revision counts as a restatement.
+            changed = previous is not None and not math.isclose(
+                float(row["value"]), float(previous["value"]), rel_tol=1e-9, abs_tol=1e-6
+            )
+            if changed:
                 events.append(RestatementEvent(
                     symbol=str(row["symbol"]), source=str(row["source"]),
                     statement=str(row["statement"]), period_end=pd.Timestamp(row["period_end"]).date(),

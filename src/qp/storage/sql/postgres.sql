@@ -1,15 +1,20 @@
 -- Production PostgreSQL schema for qp-hk-pipeline.
 -- The application creates the same tables via SQLAlchemy (`qp init-db`); this file
--- exists for DBA-managed deployments, partitioning and indexes. All timestamps are
--- stored as TIMESTAMPTZ by the application in UTC (naive UTC on SQLite).
+-- exists for DBA-managed deployments, partitioning and indexes.
+--
+-- Timestamp convention: the application writes **naive UTC** (`util.utcnow()`), and
+-- SQLAlchemy declares plain `DateTime`. The DDL must therefore use TIMESTAMP WITHOUT
+-- TIME ZONE; declaring TIMESTAMPTZ here would make psycopg2 bind naive UTC values as
+-- session-local time and shift every published_at/available_at by the server offset —
+-- a silent PIT error. Keep TZ=UTC on the server as a second line of defence.
 
 CREATE TABLE IF NOT EXISTS raw_reports (
     symbol        TEXT        NOT NULL,
     source        TEXT        NOT NULL,
     statement     TEXT        NOT NULL,
     period_end    DATE        NOT NULL,
-    published_at  TIMESTAMPTZ NOT NULL,
-    available_at  TIMESTAMPTZ NOT NULL,
+    published_at  TIMESTAMP NOT NULL,
+    available_at  TIMESTAMP NOT NULL,
     period_type   TEXT        NOT NULL DEFAULT 'ANNUAL',
     currency      TEXT        NOT NULL,
     unit_scale    DOUBLE PRECISION NOT NULL DEFAULT 1.0,
@@ -18,7 +23,7 @@ CREATE TABLE IF NOT EXISTS raw_reports (
     payload       TEXT,
     metadata      TEXT,
     run_id        TEXT,
-    ingested_at   TIMESTAMPTZ NOT NULL,
+    ingested_at   TIMESTAMP NOT NULL,
     PRIMARY KEY (symbol, source, statement, period_end, published_at, available_at)
 );
 CREATE INDEX IF NOT EXISTS ix_raw_reports_hash ON raw_reports (content_hash);
@@ -29,8 +34,8 @@ CREATE TABLE IF NOT EXISTS normalized_facts (
     source          TEXT        NOT NULL,
     statement       TEXT        NOT NULL,
     period_end      DATE        NOT NULL,
-    published_at    TIMESTAMPTZ NOT NULL,
-    available_at    TIMESTAMPTZ NOT NULL,
+    published_at    TIMESTAMP NOT NULL,
+    available_at    TIMESTAMP NOT NULL,
     field           TEXT        NOT NULL,
     period_type     TEXT,
     value           DOUBLE PRECISION,
@@ -46,7 +51,7 @@ CREATE TABLE IF NOT EXISTS normalized_facts (
     sign            TEXT,
     quality         TEXT,
     content_hash    TEXT,
-    ingested_at     TIMESTAMPTZ,
+    ingested_at     TIMESTAMP,
     run_id          TEXT,
     PRIMARY KEY (symbol, source, statement, period_end, published_at, available_at, field)
 );
@@ -55,8 +60,8 @@ CREATE INDEX IF NOT EXISTS ix_facts_pit ON normalized_facts (symbol, available_a
 CREATE TABLE IF NOT EXISTS nonrecurring_items (
     symbol        TEXT        NOT NULL,
     period_end    DATE        NOT NULL,
-    published_at  TIMESTAMPTZ NOT NULL,
-    available_at  TIMESTAMPTZ NOT NULL,
+    published_at  TIMESTAMP NOT NULL,
+    available_at  TIMESTAMP NOT NULL,
     category      TEXT        NOT NULL,
     label         TEXT        NOT NULL,
     source_kind   TEXT        NOT NULL,
@@ -103,7 +108,7 @@ CREATE TABLE IF NOT EXISTS derived_features (
     currency        TEXT,
     unit            TEXT,
     inputs          TEXT,
-    computed_at     TIMESTAMPTZ,
+    computed_at     TIMESTAMP,
     run_id          TEXT,
     PRIMARY KEY (symbol, as_of, feature, formula_version)
 );
@@ -118,23 +123,24 @@ CREATE TABLE IF NOT EXISTS quality_events (
     detail      TEXT,
     period_end  DATE,
     as_of       DATE,
-    created_at  TIMESTAMPTZ
+    created_at  TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS ix_quality_run ON quality_events (run_id, severity);
 
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     run_id      TEXT PRIMARY KEY,
-    started_at  TIMESTAMPTZ,
-    finished_at TIMESTAMPTZ,
+    started_at  TIMESTAMP,
+    finished_at TIMESTAMP,
     as_of       DATE,
     status      TEXT,
     config_hash TEXT,
     summary     TEXT
 );
 
--- PIT view: for each (symbol, source, statement, period, field), the newest version
--- visible at a given as_of. Backtests MUST join through this view (or its equivalent
--- window function), never directly against normalized_facts.
+-- PIT view: for each (symbol, source, statement, period, field) the newest archived
+-- version. It has no as_of parameter, so backtests MUST still add
+-- `WHERE available_at <= :as_of_cutoff` when querying it (or use an equivalent window
+-- function), never read normalized_facts directly.
 CREATE OR REPLACE VIEW pit_facts AS
 SELECT DISTINCT ON (symbol, source, statement, period_end, field)
        symbol, source, statement, period_end, field, value, value_native, currency,

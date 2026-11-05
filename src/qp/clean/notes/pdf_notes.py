@@ -8,6 +8,7 @@ deduplicated context window with its page number preserved as provenance.
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 from typing import Iterable
 
@@ -117,8 +118,21 @@ def extract_pdf_notes(
 
 
 def infer_period_end(path: str | Path) -> str | None:
-    match = re.search(r"(20\d{2})[-_]?(\d{2})?[-_]?(\d{2})?", Path(path).stem)
+    """Infer the fiscal period end from a note document name.
+
+    ``00700_2025_06_30_interim.txt`` → ``2025-06-30`` (an interim note must never be
+    attributed to the annual period); a bare year falls back to 12-31, and
+    impossible dates are rejected instead of guessed.
+    """
+    stem = Path(path).stem
+    match = re.search(r"(20\d{2})(?:[-_]?(\d{2}))?(?:[-_]?(\d{2}))?", stem)
     if not match:
         return None
     year = int(match.group(1))
+    month, day = match.group(2), match.group(3)
+    if month and day:
+        try:
+            return date(year, int(month), int(day)).isoformat()
+        except ValueError:
+            return None
     return f"{year}-12-31"

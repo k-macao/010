@@ -73,3 +73,20 @@ def test_wide_without_period_requires_default():
 ])
 def test_parse_number(raw, expected):
     assert parse_number(raw) == expected
+
+
+@pytest.mark.parametrize("period_end,fiscal_year_end,expected", [
+    ("2025-12-31", "12-31", "ANNUAL"),
+    ("2025-06-30", "12-31", "INTERIM"),
+    ("2025-03-31", "12-31", "QUARTERLY"),
+    ("2025-09-30", "12-31", "QUARTERLY"),
+    ("2026-03-31", "03-31", "ANNUAL"),
+    ("2025-12-31", "03-31", "QUARTERLY"),
+    ("2025-09-30", "03-31", "INTERIM"),
+])
+def test_period_type_is_relative_to_fiscal_year_end(period_end, fiscal_year_end, expected):
+    from datetime import date
+
+    from qp.ingest.shapes import _infer_period_type
+
+    assert _infer_period_type(date.fromisoformat(period_end), fiscal_year_end, None) == expected

@@ -29,6 +29,7 @@ from typing import Any, Iterable, Protocol
 from ..config import Config
 from ..domain import PeriodType, RawReport, StatementType
 from ..errors import SourceError
+from .base import period_type_for
 from .disclosure import DisclosureCalendar, SecurityMaster
 from .xbrl import parse_xbrl_instance, xbrl_facts_to_frame
 
@@ -84,6 +85,25 @@ def infer_period_end(title: str, published_at: datetime, fiscal_year_end: str = 
         return date(year, 6, 30), "INTERIM"
     month, day = (int(x) for x in fiscal_year_end.split("-"))
     return date(year, month, day), "ANNUAL"
+
+
+
+def _period_type_from_context(facts: list[Any], period_end: date, fiscal_year_end: str) -> PeriodType:
+    """Duration span of the XBRL context → ANNUAL / INTERIM / QUARTERLY.
+
+    Instant-only statements (balance sheet) carry no ``period_start``; they inherit
+    the fiscal-year-end heuristic, which ``period_type_for`` already implements.
+    """
+    starts = [f.period_start for f in facts if getattr(f, "period_start", None) is not None]
+    if starts:
+        span = (period_end - min(starts)).days
+        if span >= 300:
+            return PeriodType.ANNUAL
+        if span >= 150:
+            return PeriodType.INTERIM
+        if span > 0:
+            return PeriodType.QUARTERLY
+    return period_type_for(period_end, fiscal_year_end)
 
 
 class HKEXnewsAdapter:
@@ -217,13 +237,18 @@ class HKEXnewsAdapter:
                 grouped.setdefault((fact.period_end, hit.spec.statement), []).append(fact)
             for (period_end, statement), period_facts in sorted(grouped.items(), key=lambda kv: (kv[0][0], kv[0][1].value)):
                 currency = next((f.currency for f in period_facts if f.currency), security.report_currency)
-                disclosure = self.calendar.resolve(symbol, period_end, "ANNUAL", source="hkexnews")
+                period_type = _period_type_from_context(period_facts, period_end,
+                                                        security.fiscal_year_end)
+                # The lag estimate differs per period type (annual 90d / interim 60d),
+                # so resolve the disclosure clock with the real one.
+                disclosure = self.calendar.resolve(symbol, period_end, period_type.value,
+                                                   source="hkexnews")
                 reports.append(RawReport(
                     symbol=str(symbol).zfill(5),
                     source=self.name,
                     statement=statement,
                     period_end=period_end,
-                    period_type=PeriodType.ANNUAL,
+                    period_type=period_type,
                     currency=currency.upper(),
                     unit_scale=1.0,
                     unit_label="元(XBRL)",
@@ -231,6 +256,7 @@ class HKEXnewsAdapter:
                     available_at=disclosure.published_at,
                     data=xbrl_facts_to_frame(period_facts),
                     metadata={"document": str(path), "xbrl": True,
-                              "disclosure_origin": disclosure.origin},
+                              "disclosure_origin": disclosure.origin,
+                              "disclosure_estimated": disclosure.is_estimated},
                 ))
         return reports

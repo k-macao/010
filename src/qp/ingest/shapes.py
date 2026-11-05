@@ -13,7 +13,7 @@ raw_code (str|None) | value (float) | unit_label (str|None)``.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -60,6 +60,12 @@ def _looks_like_dates(values: Any, threshold: float = 0.6) -> bool:
     return float(parsed.notna().mean()) >= threshold
 
 
+def _days_in_month(year: int, month: int) -> int:
+    if month == 12:
+        return 31
+    return (date(year, month + 1, 1) - timedelta(days=1)).day
+
+
 def _infer_period_type(period_end: date, fiscal_year_end: str | None, date_type_code: str | None) -> str:
     if date_type_code:
         code = str(date_type_code).strip()
@@ -68,11 +74,18 @@ def _infer_period_type(period_end: date, fiscal_year_end: str | None, date_type_
     if fiscal_year_end:
         try:
             month, day = (int(x) for x in str(fiscal_year_end).split("-"))
-            if (period_end.month, period_end.day) == (month, day):
-                return "ANNUAL"
         except (ValueError, TypeError):
-            pass
-        return "INTERIM" if period_end.month in (6, 9, 12, 3) else "QUARTERLY"
+            month, day = 12, 31
+        if period_end.month == month and period_end.day == min(day, _days_in_month(period_end.year, month)):
+            return "ANNUAL"
+        # Distance in months back to the fiscal year end: 6 → half-year interim,
+        # 3/9 → quarterly. A fixed month whitelist would call Q1/Q3 "INTERIM".
+        months = (month - period_end.month) % 12
+        if months == 6:
+            return "INTERIM"
+        if months in (3, 9):
+            return "QUARTERLY"
+        return "INTERIM"
     return "ANNUAL" if period_end.month == 12 and period_end.day == 31 else "INTERIM"
 
 

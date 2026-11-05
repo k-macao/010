@@ -151,19 +151,38 @@ def choose_period(
     required: tuple[str, ...] = (OCF, CAPEX),
     max_staleness_days: int = 550,
 ) -> tuple[date | None, str]:
-    """Latest fiscal period with complete required fields and acceptable staleness."""
+    """Latest fiscal period with complete required fields and acceptable staleness.
+
+    Annual periods win over newer interim/quarterly ones. ``standard_fcf`` is a
+    period *flow* while ``fcf_yield`` divides it by a point-in-time market cap, so
+    silently swapping a 12-month annual figure for a 6-month interim one halves the
+    yield and creates a fake step in the factor series. When no annual period is
+    complete/visible we fall back to the newest period of any type; the caller
+    (``Pipeline.compute_snapshot``) turns that into a ``non_annual_period`` warning.
+    """
     if facts.empty:
         return None, "no facts visible at as_of"
     frame = facts.copy()
     frame["period_end"] = frame["period_end"].astype(str)
+    complete: list[tuple[date, str]] = []
     for period_end, group in sorted(frame.groupby("period_end"), reverse=True):
         fields = set(group["field"].astype(str))
         if not set(required) <= fields:
             continue
-        day = to_date(period_end)
-        if (to_date(as_of) - day).days > max_staleness_days:
-            return None, f"latest complete period {period_end} is stale (> {max_staleness_days}d)"
         if any(group.loc[group["field"] == f, "value"].isna().all() for f in required):
             continue
-        return day, ""
-    return None, "no period with complete OCF/CAPEX fields"
+        period_type = "ANNUAL"
+        if "period_type" in group.columns:
+            types = {str(x).upper() for x in group["period_type"].dropna().unique()}
+            if "ANNUAL" in types:
+                period_type = "ANNUAL"
+            elif types:
+                period_type = sorted(types)[0]
+        complete.append((to_date(period_end), period_type))
+    if not complete:
+        return None, "no period with complete OCF/CAPEX fields"
+    annual = [item for item in complete if item[1] == "ANNUAL"]
+    chosen, _ = (annual or complete)[0]
+    if (to_date(as_of) - chosen).days > max_staleness_days:
+        return None, f"latest complete period {chosen.isoformat()} is stale (> {max_staleness_days}d)"
+    return chosen, ""

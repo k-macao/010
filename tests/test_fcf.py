@@ -84,3 +84,29 @@ def test_engine_adjusts_oneoff_cash_items():
     result = FCFEngine("auto").compute(_aligned(), [item])
     assert result.oneoff_cash_impact == pytest.approx(10e9)
     assert result.adjusted_fcf == pytest.approx(result.standard_fcf - 10e9)
+
+
+def test_mixed_report_currency_native_is_restated_not_added():
+    """OCF in CNY + CAPEX in HKD must not be subtracted as if both were CNY."""
+    def fact(field, value, native, report_currency, fx_rate):
+        return AlignedFact(
+            symbol="00700", statement="CF", period_end=date(2025, 12, 31),
+            period_type="ANNUAL", field=field, value=value, value_native=native,
+            currency="HKD", report_currency=report_currency, fx_rate=fx_rate,
+            fx_as_of=date(2025, 12, 31), sources=("akshare",),
+            published_at=datetime(2026, 3, 25), available_at=datetime(2026, 3, 25),
+        )
+
+    aligned = AlignedReport(
+        symbol="00700", period_end=date(2025, 12, 31), period_type="ANNUAL",
+        as_of=date(2026, 10, 27),
+        facts={
+            OCF: fact(OCF, 240.0 * 1.10, 240.0, "CNY", 1.10),
+            CAPEX: fact(CAPEX, 35.0, 35.0, "HKD", 1.0),
+        },
+    )
+    result = FCFEngine("auto").compute(aligned)
+    assert result.standard_fcf == pytest.approx(229.0)
+    assert "mixed_report_currency" in result.quality
+    # native × period-end FX must round-trip back to standard_fcf
+    assert result.standard_fcf_native * 1.10 == pytest.approx(result.standard_fcf)
