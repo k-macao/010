@@ -59,3 +59,20 @@ def test_infer_period_end_from_filing_title():
     assert (str(end), kind) == ("2025-06-30", "INTERIM")
     end, kind = infer_period_end("Annual Report 2024", datetime(2025, 3, 20), fiscal_year_end="03-31")
     assert (str(end), kind) == ("2024-03-31", "ANNUAL")
+
+
+def test_xbrl_period_type_uses_the_context_span():
+    """A 6-month XBRL context must not be labelled ANNUAL (it would enter the annual series)."""
+    from datetime import date
+
+    from qp.ingest.hkexnews import _period_type_from_context
+    from qp.ingest.xbrl import XbrlFact
+
+    interim = [XbrlFact("Revenue", "H1", 100.0, "CNY", date(2025, 6, 30),
+                        period_start=date(2025, 1, 1))]
+    annual = [XbrlFact("Revenue", "FY", 200.0, "CNY", date(2025, 12, 31),
+                       period_start=date(2025, 1, 1))]
+    instant_only = [XbrlFact("Assets", "I", 1.0, "CNY", date(2025, 12, 31))]
+    assert _period_type_from_context(interim, date(2025, 6, 30), "12-31").value == "INTERIM"
+    assert _period_type_from_context(annual, date(2025, 12, 31), "12-31").value == "ANNUAL"
+    assert _period_type_from_context(instant_only, date(2025, 12, 31), "12-31").value == "ANNUAL"

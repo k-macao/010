@@ -37,6 +37,7 @@ from .domain import (
 )
 from .errors import MissingFieldError, QPError
 from .factors import FactorEngine
+from .ingest.base import period_type_for
 from .ingest.disclosure import DisclosureCalendar, SecurityMaster
 from .ingest.fx import FxRateProvider
 from .ingest.hub import FetchEvent, SourceHub
@@ -70,6 +71,20 @@ def _fetch_to_quality(events: list[FetchEvent], symbol: str, run_id: str, as_of:
     ]
 
 
+def _is_true(value: Any) -> bool:
+    """DB NULL / NaN must never be read as ``True`` (``bool(float('nan'))`` is True)."""
+    if value is None:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "t"}
+    return bool(value)
+
+
 def rows_to_items(df: pd.DataFrame) -> list[NonRecurringItem]:
     items: list[NonRecurringItem] = []
     for row in df.to_dict(orient="records"):
@@ -87,11 +102,11 @@ def rows_to_items(df: pd.DataFrame) -> list[NonRecurringItem]:
             currency=str(row.get("currency") or ""),
             published_at=to_datetime(row["published_at"]),
             available_at=to_datetime(row["available_at"]),
-            cash_impact=bool(row.get("cash_impact")),
+            cash_impact=_is_true(row.get("cash_impact")),
             page=int(row["page"]) if row.get("page") is not None and not pd.isna(row.get("page")) else None,
             raw_amount=float(row["raw_amount"]) if row.get("raw_amount") is not None and not pd.isna(row.get("raw_amount")) else None,
             raw_currency=str(row.get("raw_currency") or ""),
-            corroborated=bool(row.get("corroborated")),
+            corroborated=_is_true(row.get("corroborated")),
         ))
     return items
 
@@ -235,7 +250,12 @@ class Pipeline:
                 max_chunks=self.config.notes.max_chunks,
             )
             parsed = self.note_parser.parse(chunks)
-            disclosure = self.calendar.resolve(symbol, period_end, "ANNUAL", source="hkexnews")
+            # Resolve the disclosure clock with the real period type so an interim
+            # note (now correctly dated from the file name) gets the interim lag
+            # estimate instead of the 90-day annual one.
+            security = self.master.get(symbol)
+            period_type = period_type_for(period_end, security.fiscal_year_end).value
+            disclosure = self.calendar.resolve(symbol, period_end, period_type, source="hkexnews")
             available_at = disclosure.published_at
             items, warnings = drafts_to_items(
                 parsed.items, symbol, period_end, self.fx, self.config.fx.target_currency,
@@ -274,26 +294,37 @@ class Pipeline:
     ) -> Snapshot:
         symbol = str(symbol).zfill(5)
         as_of = to_date(as_of)
-        quality = quality or QualityChecker("adhoc", self.config.quality.strict)
+        quality = quality or QualityChecker(
+            "adhoc", self.config.quality.strict,
+            self.config.pit.max_staleness_days, self.config.pit.market_cap_max_age_days,
+        )
         strict = self.config.quality.strict if strict is None else strict
         all_facts = self.store.get_all_facts(symbol)
         restatements = detect_restatements(all_facts)
-        restated_fields = {r.field for r in restatements}
         facts = select_latest_versions(visible_at(all_facts, as_of, self.config.pit.lag_days))
         period_end, reason = choose_period(
             facts, as_of, max_staleness_days=self.config.pit.max_staleness_days
         )
         events: list[QualityEvent] = []
-        for restatement in restatements:
-            if to_date(restatement.new_available_at) <= as_of:
-                events.append(QualityEvent(
-                    run_id=quality.run_id, symbol=symbol, severity=Severity.INFO,
-                    check="restatement_detected",
-                    detail=f"{restatement.source}/{restatement.field}: "
-                           f"{restatement.old_value:.4g} → {restatement.new_value:.4g} "
-                           f"@ {restatement.new_available_at}",
-                    period_end=restatement.period_end, as_of=as_of,
-                ))
+        # A restatement is scoped to the period it restates AND to the as-of clock:
+        # detecting an FY2024 restatement must not label FY2025 facts as restated,
+        # and a restatement published after `as_of` is still unknown at that date.
+        known_restatements = [
+            r for r in restatements if to_date(r.new_available_at) <= as_of
+        ]
+        restated_fields = {
+            r.field for r in known_restatements
+            if period_end is not None and r.period_end == period_end
+        }
+        for restatement in known_restatements:
+            events.append(QualityEvent(
+                run_id=quality.run_id, symbol=symbol, severity=Severity.INFO,
+                check="restatement_detected",
+                detail=f"{restatement.source}/{restatement.field}: "
+                       f"{restatement.old_value:.4g} → {restatement.new_value:.4g} "
+                       f"@ {restatement.new_available_at}",
+                period_end=restatement.period_end, as_of=as_of,
+            ))
         if period_end is None:
             events.append(QualityEvent(
                 run_id=quality.run_id, symbol=symbol, severity=Severity.WARN,
@@ -304,6 +335,14 @@ class Pipeline:
         align_result = self.aligner.align(facts, symbol, period_end, as_of, restated_fields)
         aligned = align_result.report
         events.extend(quality.check_alignment(aligned, align_result, as_of))
+        if str(aligned.period_type).upper() != "ANNUAL":
+            events.append(QualityEvent(
+                run_id=quality.run_id, symbol=symbol, severity=Severity.WARN,
+                check="non_annual_period",
+                detail=f"no complete annual period visible; using {aligned.period_type} "
+                       f"{period_end} — flows are not annualized",
+                period_end=period_end, as_of=as_of,
+            ))
         note_df = self.store.get_nonrecurring(symbol, as_of, period_end, self.config.pit.lag_days)
         note_items = rows_to_items(note_df)
         nonrecurring = self.note_engine.extract(
@@ -357,7 +396,10 @@ class Pipeline:
         started = self.now_fn()
         run_id = f"run-{started:%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
         strict = self.config.quality.strict if strict is None else strict
-        quality = QualityChecker(run_id, strict, self.config.pit.max_staleness_days)
+        quality = QualityChecker(
+            run_id, strict, self.config.pit.max_staleness_days,
+            self.config.pit.market_cap_max_age_days,
+        )
         self.store.init_schema()
         try:
             ingested = self.ingest(symbols, as_of, quality, offline=offline)
@@ -401,7 +443,10 @@ class Pipeline:
     # -------------------------------------------------------------- utilities
     def history(self, symbol: str, dates: Iterable[date]) -> pd.DataFrame:
         """Read-only PIT factor replay: the easiest way to catch look-ahead bias."""
-        quality = QualityChecker("history", False, self.config.pit.max_staleness_days)
+        quality = QualityChecker(
+            "history", False, self.config.pit.max_staleness_days,
+            self.config.pit.market_cap_max_age_days,
+        )
         rows: list[dict[str, Any]] = []
         for day in dates:
             snapshot = self.compute_snapshot(symbol, to_date(day), quality, strict=False)

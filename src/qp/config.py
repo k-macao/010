@@ -65,6 +65,8 @@ class PitConfig:
     lag_days: int = 1
     backfill_mode: bool = False
     max_staleness_days: int = 550
+    # A market cap older than this silently distorts fcf_yield; warn instead.
+    market_cap_max_age_days: int = 10
 
 
 @dataclass
@@ -205,12 +207,18 @@ def load_config(
 ) -> Config:
     env_path = os.environ.get("QP_CONFIG")
     chosen: Path | None = None
-    for candidate in (path, env_path, DEFAULT_CONFIG_PATH):
-        if candidate and Path(candidate).exists():
-            chosen = Path(candidate)
-            break
-    if chosen is None and path is not None:
-        raise ConfigError(f"config file not found: {path}")
+    if path is not None:
+        # An explicitly requested config must exist: silently running with the
+        # default pipeline.toml would apply settings the caller never asked for.
+        explicit = Path(path)
+        if not explicit.exists():
+            raise ConfigError(f"config file not found: {path}")
+        chosen = explicit
+    else:
+        for candidate in (env_path, DEFAULT_CONFIG_PATH):
+            if candidate and Path(candidate).exists():
+                chosen = Path(candidate)
+                break
 
     cfg = Config()
     if chosen is not None:

@@ -144,7 +144,27 @@ class FCFEngine:
                 standard_fcf = ocf - capex_raw
         else:
             standard_fcf = ocf - capex
-        standard_fcf_native = ocf_native - abs(capex_native)
+        # ``value_native`` is in each fact's OWN report currency. OCF and CAPEX may
+        # come from different sources/vendors (e.g. HKEXnews HKD OCF + AkShare CNY
+        # CAPEX), so subtracting raw natives would add CNY to HKD. Restate CAPEX into
+        # the OCF currency through the stored period-end rates (value = native × fx),
+        # which keeps ``standard_fcf_native × FX(as_of)`` consistent with
+        # ``standard_fcf`` whenever the as-of rate equals the period-end rate.
+        ocf_currency = (ocf_fact.report_currency or "").upper()
+        capex_currency = (capex_fact.report_currency or "").upper()
+        ocf_fx = float(ocf_fact.fx_rate or 1.0)
+        capex_fx = float(capex_fact.fx_rate or 1.0)
+        capex_native_magnitude = abs(capex_native)
+        if ocf_currency and capex_currency and ocf_currency != capex_currency:
+            quality.append("mixed_report_currency")
+            logger.warning("mixed report currency across sources", extra={"context": {
+                "symbol": aligned.symbol, "period_end": aligned.period_end.isoformat(),
+                "ocf_currency": ocf_currency, "capex_currency": capex_currency,
+                "ocf_sources": list(ocf_fact.sources), "capex_sources": list(capex_fact.sources),
+            }})
+            if ocf_fx > 0:
+                capex_native_magnitude = capex_native_magnitude * capex_fx / ocf_fx
+        standard_fcf_native = ocf_native - capex_native_magnitude
 
         if ocf < 0:
             quality.append("negative_ocf")

@@ -32,6 +32,7 @@ class QualityChecker:
     run_id: str
     strict: bool = False
     max_staleness_days: int = 550
+    market_cap_max_age_days: int = 10
 
     def _event(
         self,
@@ -124,6 +125,13 @@ class QualityChecker:
                     f"{fact.field}: no PIT FX rate available; value not converted",
                     symbol, aligned.period_end, to_date(as_of),
                 ))
+            if "fx_stale" in fact.quality:
+                out.append(self._event(
+                    Severity.WARN, "fx_stale",
+                    f"{fact.field}: FX rate older than fx.max_age_days was used "
+                    f"(fx_as_of={fact.fx_as_of}); refresh the rate table",
+                    symbol, aligned.period_end, to_date(as_of),
+                ))
         return out
 
     def check_snapshot(
@@ -165,6 +173,16 @@ class QualityChecker:
                 "no market cap visible at as_of; fcf_yield not computed",
                 symbol, aligned.period_end, as_of,
             ))
+        else:
+            cap_as_of = to_date(market_cap[2])
+            cap_age = (as_of - cap_as_of).days
+            if cap_age > self.market_cap_max_age_days:
+                out.append(self._event(
+                    Severity.WARN, "stale_market_cap",
+                    f"latest market cap is {cap_age} days old (as_of {cap_as_of}); "
+                    f"fcf_yield denominator is stale",
+                    symbol, aligned.period_end, as_of,
+                ))
         return out
 
     @staticmethod

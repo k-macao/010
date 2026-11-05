@@ -105,3 +105,19 @@ def test_choose_period_prefers_latest_complete_and_checks_staleness():
     assert period == date(2024, 12, 31) and reason == ""
     period, reason = choose_period(df, date(2030, 1, 1), max_staleness_days=550)
     assert period is None and "stale" in reason
+
+
+def test_choose_period_prefers_annual_over_newer_interim():
+    """A 6-month interim must not silently replace the last annual period."""
+    df = pd.DataFrame([
+        _row("akshare", "OCF", 100.0, "2025-12-31"),
+        _row("akshare", "CAPEX", 20.0, "2025-12-31"),
+        {**_row("akshare", "OCF", 55.0, "2026-06-30"), "period_type": "INTERIM"},
+        {**_row("akshare", "CAPEX", 12.0, "2026-06-30"), "period_type": "INTERIM"},
+    ])
+    period, reason = choose_period(df, date(2026, 10, 27), max_staleness_days=550)
+    assert period == date(2025, 12, 31) and reason == ""
+
+    interim_only = df[df["period_end"] == "2026-06-30"]
+    period, reason = choose_period(interim_only, date(2026, 10, 27), max_staleness_days=550)
+    assert period == date(2026, 6, 30) and reason == ""

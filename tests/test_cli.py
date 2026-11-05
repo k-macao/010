@@ -41,3 +41,16 @@ def test_history_command_is_read_only(cli_args, capsys):
                             "--end", "2026-09-30", "--freq", "QE", "--run"]) == 0
     out = capsys.readouterr().out
     assert "standard_fcf" in out and "2024-12-31" in out and "2025-12-31" in out
+
+
+def test_global_flags_are_accepted_after_the_subcommand(cli_args, capsys):
+    """README documents `qp ingest --symbols ... --offline`; that spelling must work."""
+    after = ["run", "--symbols", "00700", "--as-of", "2026-10-27",
+             "--config", str(ROOT / "config" / "pipeline.toml"), "--offline"]
+    assert main(after + ["--db-url", cli_args[3]]) == 0
+    assert "status   : OK" in capsys.readouterr().out
+
+
+def test_missing_config_path_fails_loudly(capsys):
+    assert main(["--config", "does/not/exist.toml", "check"]) == 2
+    assert "config file not found" in capsys.readouterr().err

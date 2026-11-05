@@ -83,3 +83,35 @@ def test_two_symbols_offline(pipeline: Pipeline):
     summary = pipeline.run(["00700", "09988"], as_of=AS_OF, offline=True)
     assert len(summary.snapshots) == 2
     assert all(s.fcf is not None for s in summary.snapshots)
+
+
+def test_restatement_flag_is_scoped_to_its_own_period(ingested, pipeline: Pipeline):
+    """An FY2024 restatement must not label FY2025 facts as restated."""
+    old_period = pipeline.compute_snapshot("00700", date(2025, 12, 31), strict=False)
+    new_period = pipeline.compute_snapshot("00700", date(2026, 10, 27), strict=False)
+    assert old_period.period_end == date(2024, 12, 31)
+    assert new_period.period_end == date(2025, 12, 31)
+    assert old_period.aligned.facts["OCF"].restated is True
+    assert not any(f.restated for f in new_period.aligned.facts.values())
+
+
+def test_interim_only_data_is_flagged_instead_of_silently_annualized(pipeline: Pipeline):
+    from datetime import datetime
+
+    from qp.util import utcnow
+
+    rows = [
+        {"symbol": "00700", "source": "akshare", "statement": "CF",
+         "period_end": date(2026, 6, 30), "period_type": "INTERIM", "field": field,
+         "value": value, "value_native": value, "currency": "HKD",
+         "report_currency": "HKD", "fx_rate": 1.0, "fx_as_of": date(2026, 6, 30),
+         "published_at": datetime(2026, 8, 20), "available_at": datetime(2026, 8, 20),
+         "ingested_at": utcnow()}
+        for field, value in (("OCF", 100e9), ("CAPEX", 20e9))
+    ]
+    pipeline.store.upsert("normalized_facts", rows)
+    snapshot = pipeline.compute_snapshot("00700", date(2026, 10, 27), strict=False)
+    assert snapshot.period_end == date(2026, 6, 30)
+    assert snapshot.fcf.standard_fcf == pytest.approx(80e9)
+    assert any(e.check == "non_annual_period" and e.severity.value == "WARN"
+               for e in snapshot.events)

@@ -39,3 +39,10 @@ def test_pdf_backend_if_available(tmp_path):
     chunks = extract_note_chunks(path, keywords=("fair value",), context_chars=200)
     assert chunks and chunks[0].page == 1
     assert "fair value" in extract_pdf_notes(path, keyword="fair value")
+
+
+def test_infer_period_end_keeps_month_and_day():
+    """Interim note documents must not be attributed to the annual period."""
+    assert infer_period_end("/tmp/00700_2025_06_30_interim.txt") == "2025-06-30"
+    assert infer_period_end("/tmp/09988_2026-03-31-annual.pdf") == "2026-03-31"
+    assert infer_period_end("/tmp/00700_2025_13_40_broken.txt") is None
